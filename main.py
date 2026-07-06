@@ -195,26 +195,36 @@ async def core_all_series(api_key: str):
 
     for idx, show in enumerate(medusa_shows):
         # Extract metadata
+        # 1. Get the 'ids' dictionary
         ids = show.get("ids", {})
         medusa_id = extract_clean_integer_id(show)
         if not medusa_id:
             medusa_id = idx + 1
 
-        # 1. ATTEMPT TO GET THE SLUG STRING
-        # If 'ids' is a dict, we check for the 'slug' key
-        raw_slug = ids.get("slug")
+        # 2. Extract and sanitize the slug string
+        # We look for the 'slug' key specifically
+        slug_val = ids.get("slug")
         
-        # 2. IF SLUG IS MISSING OR NOT A STRING, BUILD IT
-        if not isinstance(raw_slug, str):
+        # If Medusa returns the slug as a dict (e.g., {'slug': 'tvdb123'}), extract the inner value
+        if isinstance(slug_val, dict):
+            slug_val = slug_val.get("slug")
+            
+        # If no valid string slug was found, construct it manually
+        if not isinstance(slug_val, str):
             indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
             indexer_id = ids.get(indexer)
-            raw_slug = f"{indexer}{indexer_id}" if (indexer and indexer_id) else str(show.get("id", medusa_id))
+            slug_val = f"{indexer}{indexer_id}" if indexer_id else str(show.get("id", medusa_id))
 
-        # 3. ENSURE MAP ONLY RECEIVES A CLEAN STRING
-        final_slug = str(raw_slug)
+        # 3. Save to map and define ID variables for the Sonarr object
+        final_slug = str(slug_val)
         SERIES_ID_MAP[medusa_id] = final_slug
         
-        log_debug(f"Mapping ID {medusa_id} to URL slug: {final_slug}")
+        # Re-define these so your later append logic works without NameErrors
+        tvdb_id = ids.get("tvdb")
+        tmdb_id = ids.get("tmdb")
+        imdb_id = ids.get("imdb")
+
+        log_debug(f"Mapping ID {medusa_id} to slug: {final_slug}")
 
         title = show.get(
             "title",
