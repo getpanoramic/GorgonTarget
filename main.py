@@ -445,134 +445,63 @@ async def get_episodes(
     includeEpisodeFile: bool = Query(False),
     api_key: str = Depends(get_medusa_key)
 ):
-
+    # 1. Normalize input
     target_id = seriesId or seriesid
-
     if not target_id:
         return []
 
-    #
-    # Convert Sonarr ID -> real Medusa ID
-    #
+    # 2. Ensure our mapping cache is populated
+    if not SERIES_ID_MAP:
+        await core_all_series(api_key)
 
-    medusa_id = SERIES_ID_MAP.get(
-        target_id,
-        target_id
-    )
+    # 3. Resolve Sonarr ID -> Medusa Internal ID
+    # If not found, we assume the user passed the Medusa ID directly
+    medusa_id = SERIES_ID_MAP.get(target_id, target_id)
+
+    log_debug(f"Fetching episodes for Sonarr ID {target_id} (Medusa ID {medusa_id})")
 
     try:
-
+        # 4. Use the specific series endpoint which is more reliable in Medusa
+        # If your Medusa version requires the query param version, 
+        # change this back to "/api/v2/episode" but keep the medusa_id variable
         res = await async_client.get(
-            "/api/v2/episode",
-            params={
-                "seriesid": medusa_id
-            },
+            f"/api/v2/series/{medusa_id}/episodes",
             headers=medusa_headers(api_key)
         )
         
-        log_debug(
-            f"Episode request: "
-            f"series={target_id} "
-            f"medusa={medusa_id} "
-            f"status={res.status_code}"
-        )
-
         if res.status_code != 200:
-
-            log_debug(
-                f"Episode fetch failed "
-                f"sonarr={target_id} "
-                f"medusa={medusa_id} "
-                f"status={res.status_code}"
-            )
-
+            log_debug(f"Medusa returned status {res.status_code} for {medusa_id}")
             return []
 
         medusa_eps = res.json()
-
         translated_episodes = []
 
         for ep in medusa_eps:
-
-            episode_number = (
-                ep.get("episode")
-                or ep.get("number")
-                or 0
-            )
-
-            status = str(
-                ep.get("status","")
-            ).lower()
-
-            has_file = (
-                status == "downloaded"
-                or ep.get("downloaded") is True
-            )
-
-            episode = {
-
-                "id": int(
-                    ep.get("id",0)
-                ),
-
+            # Standardize status to match Sonarr expectations
+            status = str(ep.get("status", "")).lower()
+            has_file = status in ["downloaded", "snatched"]
+            
+            translated_episodes.append({
+                "id": int(ep.get("id", 0)),
                 "seriesId": int(target_id),
-
-                "episodeFileId": (
-                    int(ep.get("id",0))
-                    if has_file
-                    else 0
-                ),
-
-                "seasonNumber": int(
-                    ep.get("season",0)
-                ),
-
-                "episodeNumber": int(
-                    episode_number
-                ),
-
-                "title": ep.get(
-                    "title",
-                    ""
-                ),
-
-                "overview": ep.get(
-                    "overview",
-                    ""
-                ),
-
+                "episodeFileId": int(ep.get("id", 0)) if has_file else 0,
+                "seasonNumber": int(ep.get("season", 0)),
+                "episodeNumber": int(ep.get("episode", ep.get("number", 0))),
+                "title": ep.get("title", ""),
+                "overview": ep.get("overview", ""),
                 "monitored": True,
-
-                "hasFile": has_file
-            }
-
-            if includeEpisodeFile and has_file:
-
-                episode["episodeFile"] = {
-                    "id": int(
-                        ep.get("id",0)
-                    ),
+                "hasFile": has_file,
+                "episodeFile": {
+                    "id": int(ep.get("id", 0)),
                     "seriesId": int(target_id),
                     "size": 0
-                }
-
-            translated_episodes.append(
-                episode
-            )
-
-        log_debug(
-            f"Returned {len(translated_episodes)} "
-            f"episodes for {target_id}"
-        )
+                } if (includeEpisodeFile and has_file) else None
+            })
 
         return translated_episodes
 
     except Exception as e:
-
-        log_debug(
-            f"Episode error: {e}"
-        )
-
+        log_debug(f"Episode fetch exception: {str(e)}")
         return []
 
 # ---------------------------------------------------------------------------
