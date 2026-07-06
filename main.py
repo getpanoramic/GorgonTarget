@@ -463,8 +463,18 @@ async def get_episodes(
     try:
 
         res = await async_client.get(
-            f"/api/v2/series/{medusa_id}/episodes",
+            "/api/v2/episode",
+            params={
+                "seriesid": medusa_id
+            },
             headers=medusa_headers(api_key)
+        )
+        
+        log_debug(
+            f"Episode request: "
+            f"series={target_id} "
+            f"medusa={medusa_id} "
+            f"status={res.status_code}"
         )
 
         if res.status_code != 200:
