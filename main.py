@@ -214,18 +214,20 @@ async def core_all_series(api_key: str):
         # Medusa usually stores the indexer name in 'indexer' or 'default_indexer'
         indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
         
-        # Get the ID for that indexer from the 'ids' dict
-        indexer_id = ids.get(indexer)
+        # Replace the manual slug construction block with this:
+        ids = show.get("ids", {})
         
-        # Construct the slug: {indexer}{id}
-        if indexer and indexer_id:
-            slug = f"{indexer}{indexer_id}"
-        else:
-            # Fallback for internal Medusa IDs
-            slug = str(show.get("id", medusa_id))
+        # 1. Use the API-provided slug if available
+        slug = ids.get("slug")
+        
+        # 2. Fallback to manual construction if 'slug' is missing
+        if not slug:
+            indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
+            indexer_id = ids.get(indexer)
+            slug = f"{indexer}{indexer_id}" if (indexer and indexer_id) else str(show.get("id", medusa_id))
 
-        # 2. Store the SLUG in the map instead of the raw integer/dict
-        SERIES_ID_MAP[medusa_id] = slug
+        # 3. Force string conversion to prevent dictionary injection
+        SERIES_ID_MAP[medusa_id] = str(slug)
 
         title = show.get(
             "title",
