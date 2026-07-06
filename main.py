@@ -210,17 +210,22 @@ async def core_all_series(api_key: str):
         # Store actual ID used by Medusa API
         #
 
-        raw_medusa_id = show.get("id")
+        # 1. Determine the slug (e.g., "tvdb12345" or "tvmaze678")
+        # Medusa usually stores the indexer name in 'indexer' or 'default_indexer'
+        indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
+        
+        # Get the ID for that indexer from the 'ids' dict
+        indexer_id = ids.get(indexer)
+        
+        # Construct the slug: {indexer}{id}
+        if indexer and indexer_id:
+            slug = f"{indexer}{indexer_id}"
+        else:
+            # Fallback for internal Medusa IDs
+            slug = str(show.get("id", medusa_id))
 
-        if isinstance(raw_medusa_id, dict):
-            raw_medusa_id = (
-                raw_medusa_id.get("medusa")
-                or raw_medusa_id.get("tvdb")
-                or raw_medusa_id.get("tmdb")
-                or medusa_id
-            )
-
-        SERIES_ID_MAP[medusa_id] = raw_medusa_id
+        # 2. Store the SLUG in the map instead of the raw integer/dict
+        SERIES_ID_MAP[medusa_id] = slug
 
         title = show.get(
             "title",
