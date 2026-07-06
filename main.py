@@ -33,7 +33,7 @@ class CaseInsensitiveAPIMiddleware:
 # ---------------------------------------------------------------------------
 # APP INITIALIZATION & LOGGER CONFIG
 # ---------------------------------------------------------------------------
-app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.4.9")
+app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.6.0")
 app.add_middleware(CaseInsensitiveAPIMiddleware)
 
 MEDUSA_URL = os.getenv("MEDUSA_URL", "http://localhost:8081")
@@ -99,9 +99,7 @@ def extract_clean_integer_id(show_node: dict) -> int:
         return 99999
 
 def extract_clean_year(show_node: dict) -> int:
-    """Safely extracts a standard scalar calendar year from variations of Medusa outputs."""
     raw_year = show_node.get("year") or show_node.get("startYear")
-    
     if isinstance(raw_year, dict):
         raw_year = raw_year.get("year") or raw_year.get("value") or list(raw_year.values())[0]
         
@@ -170,11 +168,20 @@ async def core_all_series(api_key: str):
             tvdb_id = tvdb_id.get("tvdb") or series_id
 
         show_year = extract_clean_year(show)
+        show_title = show.get("title", f"Series {series_id}")
+
+        # Fixes Bazarr's unique path SQLite constraint crashes by assigning explicit fallback subdirectories
+        raw_path = show.get("path", "")
+        if not raw_path or raw_path == "/tv":
+            safe_folder = show_title.replace("/", "_").replace("\\", "_")
+            series_path = f"/tv/{safe_folder}"
+        else:
+            series_path = str(raw_path)
 
         sonarr_shows.append({
             "id": int(series_id), 
-            "title": show.get("title"),
-            "sortTitle": show.get("title", "").lower(),
+            "title": show_title,
+            "sortTitle": show_title.lower(),
             "status": "continuing" if show.get("status") == "continuing" else "ended",
             "overview": show.get("overview", ""),
             "tvdbId": int(tvdb_id),
@@ -184,7 +191,7 @@ async def core_all_series(api_key: str):
             "alternateTitles": [], 
             "genres": [],
             "seriesType": "standard",
-            "path": show.get("path", "/tv"),
+            "path": series_path,
             "profileId": 1,
             "languageProfileId": 1,
             "monitored": not show.get("paused", False),
@@ -350,21 +357,40 @@ async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depend
         return []
 
 @app.get("/api/v3/episode")
-async def get_episodes(seriesId: Optional[int] = Query(None), api_key: str = Depends(get_medusa_key)):
-    if not seriesId: return []
+async def get_episodes(
+    seriesId: Optional[int] = Query(None), 
+    seriesid: Optional[int] = Query(None), 
+    api_key: str = Depends(get_medusa_key)
+):
+    target_id = seriesId or seriesid
+    if not target_id: 
+        return []
+        
     try:
-        res = await async_client.get(f"/api/v2/series/{seriesId}/episodes", headers=medusa_headers(api_key))
+        res = await async_client.get(f"/api/v2/series/{target_id}/episodes", headers=medusa_headers(api_key))
         if res.status_code != 200: return []
-        return [{
-            "id": ep.get("id"),
-            "seriesId": seriesId,
-            "episodeFileId": 0 if ep.get("status") != "Downloaded" else ep.get("id"),
-            "seasonNumber": ep.get("season"),
-            "episodeNumber": ep.get("episode"),
-            "title": ep.get("title", f"Episode {ep.get('episode')}"),
-            "monitored": True,
-            "hasFile": ep.get("status") == "Downloaded"
-        } for ep in res.json()]
+        
+        translated_episodes = []
+        for ep in res.json():
+            is_downloaded = ep.get("status") == "Downloaded"
+            translated_episodes.append({
+                "id": ep.get("id"),
+                "seriesId": target_id,
+                "episodeFileId": ep.get("id") if is_downloaded else 0,
+                "seasonNumber": ep.get("season"),
+                "episodeNumber": ep.get("episode"),
+                "title": ep.get("title", f"Episode {ep.get('episode')}"),
+                "monitored": True,
+                "hasFile": is_downloaded,
+                "episodeFile": {
+                    "id": ep.get("id"),
+                    "seriesId": target_id,
+                    "quality": {"quality": {"id": 1, "name": "Unknown"}, "revision": {"version": 1, "real": 0}},
+                    "size": 0,
+                    "dateAdded": "2026-01-01T00:00:00Z"
+                } if is_downloaded else None
+            })
+        return translated_episodes
     except Exception:
         return []
 
