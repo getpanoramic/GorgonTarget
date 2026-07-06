@@ -46,6 +46,14 @@ app.add_middleware(CaseInsensitiveAPIMiddleware)
 MEDUSA_URL = os.getenv("MEDUSA_URL", "http://localhost:8081")
 async_client = httpx.AsyncClient(base_url=MEDUSA_URL, timeout=15.0)
 
+# Maps Sonarr proxy IDs -> real Medusa IDs
+SERIES_ID_MAP = {}
+
+async_client = httpx.AsyncClient(
+    base_url=MEDUSA_URL,
+    timeout=30
+)
+
 def log_debug(message: str):
     print(f"[GorgonTarget DEBUG] {message}", file=sys.stderr, flush=True)
 
@@ -160,9 +168,13 @@ async def core_system_status(api_key: str):
 async def core_all_series(api_key: str):
     log_debug("Fetching global show registry list via /api/v2/series")
 
-    params = {"limit": 1000} 
+    params = {"limit": 1000}
 
-    res = await async_client.get("/api/v2/series", params=params, headers=medusa_headers(api_key))
+    res = await async_client.get(
+        "/api/v2/series",
+        params=params,
+        headers=medusa_headers(api_key)
+    )
 
     if res.status_code != 200:
         return JSONResponse(
@@ -178,6 +190,9 @@ async def core_all_series(api_key: str):
 
     sonarr_shows = []
 
+    # refresh cache
+    SERIES_ID_MAP.clear()
+
     for idx, show in enumerate(medusa_shows):
 
         ids = show.get("ids", {})
@@ -190,6 +205,22 @@ async def core_all_series(api_key: str):
         tvdb_id = ids.get("tvdb")
         tmdb_id = ids.get("tmdb")
         imdb_id = ids.get("imdb")
+
+        #
+        # Store actual ID used by Medusa API
+        #
+
+        raw_medusa_id = show.get("id")
+
+        if isinstance(raw_medusa_id, dict):
+            raw_medusa_id = (
+                raw_medusa_id.get("medusa")
+                or raw_medusa_id.get("tvdb")
+                or raw_medusa_id.get("tmdb")
+                or medusa_id
+            )
+
+        SERIES_ID_MAP[medusa_id] = raw_medusa_id
 
         title = show.get(
             "title",
@@ -206,13 +237,12 @@ async def core_all_series(api_key: str):
             )
 
             path = f"/tv/{safe_folder}"
-
         else:
             path = str(raw_path)
 
         sonarr_shows.append({
 
-            "id": medusa_id,
+            "id": int(medusa_id),
 
             "tvdbId": int(tvdb_id) if tvdb_id else 0,
             "tmdbId": int(tmdb_id) if tmdb_id else 0,
@@ -227,17 +257,13 @@ async def core_all_series(api_key: str):
                 else "ended"
             ),
 
-            "overview": show.get(
-                "overview",
-                ""
-            ),
+            "overview": show.get("overview", ""),
 
             "year": extract_clean_year(show),
 
             "images": [],
             "alternateTitles": [],
             "genres": [],
-
             "seriesType": "standard",
 
             "path": path,
@@ -251,9 +277,7 @@ async def core_all_series(api_key: str):
             ),
 
             "useSceneNumbering": False,
-
             "added": "2026-01-01T00:00:00Z",
-
             "seasons": []
         })
 
