@@ -416,40 +416,133 @@ async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa
 
 @app.get("/api/v3/episode")
 async def get_episodes(
-    seriesId: Optional[int] = Query(None), 
-    seriesid: Optional[int] = Query(None), 
+    seriesId: Optional[int] = Query(None),
+    seriesid: Optional[int] = Query(None),
+    includeEpisodeFile: bool = Query(False),
     api_key: str = Depends(get_medusa_key)
 ):
     target_id = seriesId or seriesid
-    if not target_id: 
+
+    if not target_id:
         return []
-        
+
     try:
-        res = await async_client.get(f"/api/v2/series/{target_id}/episodes", headers=medusa_headers(api_key))
-        if res.status_code != 200: return []
-        
+
+        res = await async_client.get(
+            f"/api/v2/series/{target_id}/episodes",
+            headers=medusa_headers(api_key)
+        )
+
+        if res.status_code != 200:
+            log_debug(
+                f"Episode fetch failed {target_id}"
+            )
+            return []
+
+        medusa_eps = res.json()
+
         translated_episodes = []
-        for ep in res.json():
-            is_downloaded = ep.get("status") == "Downloaded"
-            translated_episodes.append({
-                "id": ep.get("id"),
-                "seriesId": target_id,
-                "episodeFileId": ep.get("id") if is_downloaded else 0,
-                "seasonNumber": ep.get("season"),
-                "episodeNumber": ep.get("episode"),
-                "title": ep.get("title", f"Episode {ep.get('episode')}"),
+
+        for ep in medusa_eps:
+
+            ep_id = ep.get("id", 0)
+
+            season = ep.get(
+                "season",
+                0
+            )
+
+            episode_number = (
+                ep.get("episode")
+                or ep.get("number")
+                or 0
+            )
+
+            status = str(
+                ep.get("status", "")
+            ).lower()
+
+            has_file = (
+                status == "downloaded"
+                or ep.get("downloaded") is True
+            )
+
+            episode = {
+                "id": int(ep_id),
+
+                "seriesId": int(target_id),
+
+                "episodeFileId":
+                    int(ep_id)
+                    if has_file
+                    else 0,
+
+                "seasonNumber": int(season),
+
+                "episodeNumber": int(
+                    episode_number
+                ),
+
+                "title": ep.get(
+                    "title",
+                    f"Episode {episode_number}"
+                ),
+
+                "overview": ep.get(
+                    "overview",
+                    ""
+                ),
+
                 "monitored": True,
-                "hasFile": is_downloaded,
-                "episodeFile": {
-                    "id": ep.get("id"),
-                    "seriesId": target_id,
-                    "quality": {"quality": {"id": 1, "name": "Unknown"}, "revision": {"version": 1, "real": 0}},
+
+                "hasFile": has_file,
+
+                "airDateUtc":
+                    ep.get("airdate")
+                    or "2000-01-01T00:00:00Z"
+            }
+
+            if includeEpisodeFile and has_file:
+
+                episode["episodeFile"] = {
+                    "id": int(ep_id),
+                    "seriesId": int(target_id),
+                    "path": ep.get(
+                        "location",
+                        ""
+                    ),
+                    "quality": {
+                        "quality": {
+                            "id": 1,
+                            "name": "Unknown"
+                        },
+                        "revision": {
+                            "version": 1,
+                            "real": 0
+                        }
+                    },
                     "size": 0,
-                    "dateAdded": "2026-01-01T00:00:00Z"
-                } if is_downloaded else None
-            })
+                    "dateAdded":
+                        "2026-01-01T00:00:00Z"
+                }
+
+            translated_episodes.append(
+                episode
+            )
+
+        log_debug(
+            f"Returning {len(translated_episodes)} "
+            f"episodes for {target_id}"
+        )
+
         return translated_episodes
-    except Exception:
+
+    except Exception as e:
+
+        log_debug(
+            f"Episode endpoint error: {e}"
+        )
+
         return []
 
 # ---------------------------------------------------------------------------
