@@ -160,10 +160,9 @@ async def core_system_status(api_key: str):
 async def core_all_series(api_key: str):
     log_debug("Fetching global show registry list via /api/v2/series")
 
-    res = await async_client.get(
-        "/api/v2/series",
-        headers=medusa_headers(api_key)
-    )
+    params = {"limit": 1000} 
+
+    res = await async_client.get("/api/v2/series", params=params, headers=medusa_headers(api_key))
 
     if res.status_code != 200:
         return JSONResponse(
