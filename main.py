@@ -445,43 +445,41 @@ async def get_episodes(
     includeEpisodeFile: bool = Query(False),
     api_key: str = Depends(get_medusa_key)
 ):
-    # 1. Normalize input
     target_id = seriesId or seriesid
     if not target_id:
         return []
 
-    # 2. Ensure our mapping cache is populated
+    # 1. Ensure cache is warm
     if not SERIES_ID_MAP:
         await core_all_series(api_key)
 
-    # 3. Resolve Sonarr ID -> Medusa Internal ID
-    # If not found, we assume the user passed the Medusa ID directly
+    # 2. Resolve Sonarr ID -> Medusa Internal ID
     medusa_id = SERIES_ID_MAP.get(target_id, target_id)
 
     log_debug(f"Fetching episodes for Sonarr ID {target_id} (Medusa ID {medusa_id})")
 
     try:
-        # 4. Use the specific series endpoint which is more reliable in Medusa
-        # If your Medusa version requires the query param version, 
-        # change this back to "/api/v2/episode" but keep the medusa_id variable
+        # We use the query parameter structure for Medusa V2.
+        # If this continues to fail with 400, the error log will now reveal why.
         res = await async_client.get(
-            f"/api/v2/series/{medusa_id}/episodes",
+            "/api/v2/episode",
+            params={"seriesid": medusa_id},
             headers=medusa_headers(api_key)
         )
         
+        # LOGGING THE ERROR: This is the most important part to fix your 400 error.
         if res.status_code != 200:
-            log_debug(f"Medusa returned status {res.status_code} for {medusa_id}")
+            log_debug(f"Medusa returned {res.status_code} for {medusa_id}. Server response: {res.text}")
             return []
 
         medusa_eps = res.json()
         translated_episodes = []
 
         for ep in medusa_eps:
-            # Standardize status to match Sonarr expectations
             status = str(ep.get("status", "")).lower()
             has_file = status in ["downloaded", "snatched"]
             
-            translated_episodes.append({
+            episode = {
                 "id": int(ep.get("id", 0)),
                 "seriesId": int(target_id),
                 "episodeFileId": int(ep.get("id", 0)) if has_file else 0,
@@ -490,13 +488,17 @@ async def get_episodes(
                 "title": ep.get("title", ""),
                 "overview": ep.get("overview", ""),
                 "monitored": True,
-                "hasFile": has_file,
-                "episodeFile": {
+                "hasFile": has_file
+            }
+
+            if includeEpisodeFile and has_file:
+                episode["episodeFile"] = {
                     "id": int(ep.get("id", 0)),
                     "seriesId": int(target_id),
                     "size": 0
-                } if (includeEpisodeFile and has_file) else None
-            })
+                }
+
+            translated_episodes.append(episode)
 
         return translated_episodes
 
