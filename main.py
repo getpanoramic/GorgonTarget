@@ -33,7 +33,7 @@ class CaseInsensitiveAPIMiddleware:
 # ---------------------------------------------------------------------------
 # APP INITIALIZATION & LOGGER CONFIG
 # ---------------------------------------------------------------------------
-app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.4.8")
+app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.4.9")
 app.add_middleware(CaseInsensitiveAPIMiddleware)
 
 MEDUSA_URL = os.getenv("MEDUSA_URL", "http://localhost:8081")
@@ -79,7 +79,7 @@ class SonarrCommand(BaseModel):
     episodeIds: Optional[List[int]] = None
 
 # ---------------------------------------------------------------------------
-# ID CONVERSION SAFETY FUNCTION
+# ID & VALUE CONVERSION SAFETY FUNCTIONS
 # ---------------------------------------------------------------------------
 def extract_clean_integer_id(show_node: dict) -> int:
     raw_id = show_node.get("id")
@@ -97,6 +97,20 @@ def extract_clean_integer_id(show_node: dict) -> int:
         if isinstance(raw_id, str) and raw_id.strip():
             return sum(ord(char) for char in raw_id)
         return 99999
+
+def extract_clean_year(show_node: dict) -> int:
+    """Safely extracts a standard scalar calendar year from variations of Medusa outputs."""
+    raw_year = show_node.get("year") or show_node.get("startYear")
+    
+    if isinstance(raw_year, dict):
+        raw_year = raw_year.get("year") or raw_year.get("value") or list(raw_year.values())[0]
+        
+    try:
+        if raw_year is not None:
+            return int(raw_year)
+    except (ValueError, TypeError):
+        pass
+    return 0
 
 # ---------------------------------------------------------------------------
 # REUSABLE CORE IMPLEMENTATIONS (SHARED ACROSS V2/V3)
@@ -155,8 +169,7 @@ async def core_all_series(api_key: str):
         if isinstance(tvdb_id, dict):
             tvdb_id = tvdb_id.get("tvdb") or series_id
 
-        # Safely capture target year properties
-        show_year = show.get("year", 0) or show.get("startYear", 0)
+        show_year = extract_clean_year(show)
 
         sonarr_shows.append({
             "id": int(series_id), 
@@ -166,7 +179,7 @@ async def core_all_series(api_key: str):
             "overview": show.get("overview", ""),
             "tvdbId": int(tvdb_id),
             "imdbId": show.get("ids", {}).get("imdb", ""),
-            "year": int(show_year), # FIX: Prevents Bazarr KeyError: 'year' crashes
+            "year": show_year,
             "images": [],
             "alternateTitles": [], 
             "genres": [],
@@ -264,13 +277,13 @@ async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_ke
             
         show = res.json()
         clean_id = extract_clean_integer_id(show)
-        show_year = show.get("year", 0) or show.get("startYear", 0)
+        show_year = extract_clean_year(show)
         return {
             "id": int(clean_id), 
             "title": show.get("title"),
             "tvdbId": int(clean_id),
             "imdbId": show.get("ids", {}).get("imdb", ""),
-            "year": int(show_year),
+            "year": show_year,
             "images": [],
             "alternateTitles": [],
             "genres": [],
@@ -329,7 +342,7 @@ async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depend
             "genres": [],
             "seriesType": "standard",
             "overview": item.get("overview"),
-            "year": int(item.get("year", 0)),
+            "year": extract_clean_year(item),
             "remotePoster": item.get("image", ""),
             "added": "2026-01-01T00:00:00Z",
         } for item in res.json()]
