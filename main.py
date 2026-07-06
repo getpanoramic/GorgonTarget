@@ -193,7 +193,7 @@ async def core_all_series(api_key: str):
     # refresh cache
     SERIES_ID_MAP.clear()
 
-for idx, show in enumerate(medusa_shows):
+    for idx, show in enumerate(medusa_shows):
         # Extract metadata
         ids = show.get("ids", {})
         medusa_id = extract_clean_integer_id(show)
