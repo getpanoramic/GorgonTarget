@@ -461,9 +461,9 @@ async def get_episodes(
     try:
         # We use the query parameter structure for Medusa V2.
         # If this continues to fail with 400, the error log will now reveal why.
+        # Updated implementation
         res = await async_client.get(
-            "/api/v2/episode",
-            params={"seriesid": medusa_id},
+            f"/api/v2/series/{medusa_id}/episodes",
             headers=medusa_headers(api_key)
         )
         
