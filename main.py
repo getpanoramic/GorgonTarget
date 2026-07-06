@@ -5,22 +5,15 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import httpx
 
-app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.1.0")
+app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.2.0")
 
-# The only required environment configuration is the backend URL
 MEDUSA_URL = os.getenv("MEDUSA_URL", "http://localhost:8081")
-
-# Asynchronous HTTP client for non-blocking proxying
 async_client = httpx.AsyncClient(base_url=MEDUSA_URL, timeout=15.0)
 
 # ---------------------------------------------------------------------------
 # DYNAMIC AUTHENTICATION HELPER
 # ---------------------------------------------------------------------------
 def get_medusa_key(x_api_key: str = Header(None)) -> str:
-    """
-    Extracts the incoming API key sent by the Sonarr client.
-    This key is treated as the source of truth and forwarded to Medusa.
-    """
     if not x_api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
@@ -29,7 +22,6 @@ def get_medusa_key(x_api_key: str = Header(None)) -> str:
     return x_api_key
 
 def medusa_headers(api_key: str) -> dict:
-    """Generates expected downstream headers dynamically using the passed key."""
     return {"x-api-key": api_key, "Content-Type": "application/json"}
 
 # ---------------------------------------------------------------------------
@@ -47,6 +39,14 @@ class SonarrCommand(BaseModel):
     name: str
     seriesId: Optional[int] = None
     episodeIds: Optional[List[int]] = None
+
+# ---------------------------------------------------------------------------
+# NEW: ROOT HEALTH PATHS
+# ---------------------------------------------------------------------------
+@app.get("/")
+async def root_index():
+    """Simple baseline route to ensure container landing path is healthy."""
+    return {"status": "running", "service": "GorgonTarget Proxy"}
 
 # ---------------------------------------------------------------------------
 # 1. SYSTEM & CONFIGURATION ENDPOINTS
@@ -96,15 +96,13 @@ async def get_root_folders():
     return [{"id": 1, "path": "/tv", "accessible": True, "freeSpace": 500000000000, "unmappedFolders": []}]
 
 @app.get("/api/v3/tag", dependencies=[Depends(get_medusa_key)])
-async def get_tags(): 
-    return []
+async def get_tags(): return []
 
 @app.get("/api/v3/customformat", dependencies=[Depends(get_medusa_key)])
-async def get_custom_formats(): 
-    return []
+async def get_custom_formats(): return []
 
 # ---------------------------------------------------------------------------
-# 3. SERIES & EPISODE TRANSFORMATION LOGIC (Dynamic Tokens)
+# 3. SERIES & EPISODE TRANSFORMATION LOGIC
 # ---------------------------------------------------------------------------
 @app.get("/api/v3/series")
 async def get_all_series(api_key: str = Depends(get_medusa_key)):
@@ -201,7 +199,7 @@ async def get_episodes(seriesId: int = Query(...), api_key: str = Depends(get_me
         return []
 
 # ---------------------------------------------------------------------------
-# 4. CALENDAR, QUEUE & HISTORY
+# 4. CALENDAR, QUEUE, WANTED & HISTORY
 # ---------------------------------------------------------------------------
 @app.get("/api/v3/calendar")
 async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: str = Depends(get_medusa_key)):
@@ -223,9 +221,44 @@ async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: 
     except Exception:
         return []
 
+@app.get("/api/v3/wanted/missing")
+async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
+    """NEW: Resolves Sonarr client queries tracking missed or backlogged episodes."""
+    try:
+        res = await async_client.get("/api/v2/schedule", headers=medusa_headers(api_key))
+        if res.status_code != 200:
+            return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
+        
+        medusa_schedule = res.json()
+        # Combine Medusa's 'missed' and 'coming' backlogs to fill Sonarr missing array structure
+        combined = medusa_schedule.get("missed", []) + medusa_schedule.get("coming", [])
+        
+        records = [{
+            "id": idx + 1000,
+            "seriesId": item.get("seriesId"),
+            "episodeNumber": item.get("episode"),
+            "seasonNumber": item.get("season"),
+            "title": item.get("title"),
+            "airDateUtc": item.get("airDate")
+        } for idx, item in enumerate(combined)]
+        
+        return {
+            "page": 1,
+            "pageSize": len(records) if records else 20,
+            "totalRecords": len(records),
+            "records": records
+        }
+    except Exception:
+        return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
+
 @app.get("/api/v3/queue", dependencies=[Depends(get_medusa_key)])
 async def get_queue():
     return {"page": 1, "pageSize": 20, "sortKey": "id", "sortDirection": "descending", "totalRecords": 0, "records": []}
+
+@app.get("/api/v3/queue/status", dependencies=[Depends(get_medusa_key)])
+async def get_queue_status():
+    """NEW: Emulates active global session parameters for connecting download managers."""
+    return {"unhealthyCount": 0, "unknownCount": 0, "errors": False, "warnings": False}
 
 @app.get("/api/v3/history", dependencies=[Depends(get_medusa_key)])
 async def get_history():
