@@ -193,50 +193,28 @@ async def core_all_series(api_key: str):
     # refresh cache
     SERIES_ID_MAP.clear()
 
-    for idx, show in enumerate(medusa_shows):
-
+for idx, show in enumerate(medusa_shows):
+        # Extract metadata
         ids = show.get("ids", {})
-
         medusa_id = extract_clean_integer_id(show)
-
         if not medusa_id:
             medusa_id = idx + 1
 
-        tvdb_id = ids.get("tvdb")
-        tmdb_id = ids.get("tmdb")
-        imdb_id = ids.get("imdb")
-
-        #
-        # Store actual ID used by Medusa API
-        #
-
-        # 1. Determine the slug (e.g., "tvdb12345" or "tvmaze678")
-        # Medusa usually stores the indexer name in 'indexer' or 'default_indexer'
-        indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
+        # 1. ATTEMPT TO GET THE SLUG STRING
+        # If 'ids' is a dict, we check for the 'slug' key
+        raw_slug = ids.get("slug")
         
-        # 1. Access the 'ids' object
-        ids = show.get("ids", {})
-
-        # 2. Extract the slug by specifically accessing the 'slug' key
-        # We also add a safety check to ensure it's not a dict
-        slug_val = ids.get("slug")
-        
-        # If slug_val is itself a dict (some Medusa forks do this), extract 'slug' from it
-        if isinstance(slug_val, dict):
-            slug_val = slug_val.get("slug")
-            
-        # 3. Fallback logic if slug_val is still missing
-        if not slug_val:
+        # 2. IF SLUG IS MISSING OR NOT A STRING, BUILD IT
+        if not isinstance(raw_slug, str):
             indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
             indexer_id = ids.get(indexer)
-            slug_val = f"{indexer}{indexer_id}" if (indexer and indexer_id) else str(show.get("id", medusa_id))
+            raw_slug = f"{indexer}{indexer_id}" if (indexer and indexer_id) else str(show.get("id", medusa_id))
 
-        # 4. Final cast to string and save to the map
-        final_slug = str(slug_val)
+        # 3. ENSURE MAP ONLY RECEIVES A CLEAN STRING
+        final_slug = str(raw_slug)
         SERIES_ID_MAP[medusa_id] = final_slug
         
-        # Debugging step: Verify exactly what is being stored
-        log_debug(f"Mapping ID {medusa_id} to slug: {final_slug} (Type: {type(final_slug)})")
+        log_debug(f"Mapping ID {medusa_id} to URL slug: {final_slug}")
 
         title = show.get(
             "title",
