@@ -421,22 +421,37 @@ async def get_episodes(
     includeEpisodeFile: bool = Query(False),
     api_key: str = Depends(get_medusa_key)
 ):
+
     target_id = seriesId or seriesid
 
     if not target_id:
         return []
 
+    #
+    # Convert Sonarr ID -> real Medusa ID
+    #
+
+    medusa_id = SERIES_ID_MAP.get(
+        target_id,
+        target_id
+    )
+
     try:
 
         res = await async_client.get(
-            f"/api/v2/series/{target_id}/episodes",
+            f"/api/v2/series/{medusa_id}/episodes",
             headers=medusa_headers(api_key)
         )
 
         if res.status_code != 200:
+
             log_debug(
-                f"Episode fetch failed {target_id}"
+                f"Episode fetch failed "
+                f"sonarr={target_id} "
+                f"medusa={medusa_id} "
+                f"status={res.status_code}"
             )
+
             return []
 
         medusa_eps = res.json()
@@ -445,13 +460,6 @@ async def get_episodes(
 
         for ep in medusa_eps:
 
-            ep_id = ep.get("id", 0)
-
-            season = ep.get(
-                "season",
-                0
-            )
-
             episode_number = (
                 ep.get("episode")
                 or ep.get("number")
@@ -459,7 +467,7 @@ async def get_episodes(
             )
 
             status = str(
-                ep.get("status", "")
+                ep.get("status","")
             ).lower()
 
             has_file = (
@@ -468,16 +476,22 @@ async def get_episodes(
             )
 
             episode = {
-                "id": int(ep_id),
+
+                "id": int(
+                    ep.get("id",0)
+                ),
 
                 "seriesId": int(target_id),
 
-                "episodeFileId":
-                    int(ep_id)
+                "episodeFileId": (
+                    int(ep.get("id",0))
                     if has_file
-                    else 0,
+                    else 0
+                ),
 
-                "seasonNumber": int(season),
+                "seasonNumber": int(
+                    ep.get("season",0)
+                ),
 
                 "episodeNumber": int(
                     episode_number
@@ -485,7 +499,7 @@ async def get_episodes(
 
                 "title": ep.get(
                     "title",
-                    f"Episode {episode_number}"
+                    ""
                 ),
 
                 "overview": ep.get(
@@ -495,35 +509,17 @@ async def get_episodes(
 
                 "monitored": True,
 
-                "hasFile": has_file,
-
-                "airDateUtc":
-                    ep.get("airdate")
-                    or "2000-01-01T00:00:00Z"
+                "hasFile": has_file
             }
 
             if includeEpisodeFile and has_file:
 
                 episode["episodeFile"] = {
-                    "id": int(ep_id),
-                    "seriesId": int(target_id),
-                    "path": ep.get(
-                        "location",
-                        ""
+                    "id": int(
+                        ep.get("id",0)
                     ),
-                    "quality": {
-                        "quality": {
-                            "id": 1,
-                            "name": "Unknown"
-                        },
-                        "revision": {
-                            "version": 1,
-                            "real": 0
-                        }
-                    },
-                    "size": 0,
-                    "dateAdded":
-                        "2026-01-01T00:00:00Z"
+                    "seriesId": int(target_id),
+                    "size": 0
                 }
 
             translated_episodes.append(
@@ -531,7 +527,7 @@ async def get_episodes(
             )
 
         log_debug(
-            f"Returning {len(translated_episodes)} "
+            f"Returned {len(translated_episodes)} "
             f"episodes for {target_id}"
         )
 
@@ -540,7 +536,7 @@ async def get_episodes(
     except Exception as e:
 
         log_debug(
-            f"Episode endpoint error: {e}"
+            f"Episode error: {e}"
         )
 
         return []
