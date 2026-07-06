@@ -4,9 +4,29 @@ from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, Header, HTTPException, Query, status, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from starlette.types import ASGIApp, Scope, Receive, Send
 import httpx
 
-app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.3.9")
+# ---------------------------------------------------------------------------
+# CASE-INSENSITIVE ROUTING MIDDLEWARE
+# ---------------------------------------------------------------------------
+class CaseInsensitiveAPIMiddleware:
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            # Intercept api/v3 routes and force lowercase to handle mixed client casing
+            if path.startswith("/api/v3"):
+                scope["path"] = path.lower()
+        await self.app(scope, receive, send)
+
+# ---------------------------------------------------------------------------
+# APP INITIALIZATION
+# ---------------------------------------------------------------------------
+app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.4.1")
+app.add_middleware(CaseInsensitiveAPIMiddleware)
 
 MEDUSA_URL = os.getenv("MEDUSA_URL", "http://localhost:8081")
 async_client = httpx.AsyncClient(base_url=MEDUSA_URL, timeout=15.0)
@@ -109,7 +129,7 @@ async def get_disk_space(api_key: str = Depends(get_medusa_key)):
     }]
 
 # ---------------------------------------------------------------------------
-# 2. PROFILES, TAGS, AND CONFIGURATIONS
+# 2. PROFILES, TAGS, AND CONFIGURATIONS (CASE INSENSITIVE VIA MIDDLEWARE)
 # ---------------------------------------------------------------------------
 @app.get("/api/v3/qualityprofile")
 async def get_quality_profiles(api_key: str = Depends(get_medusa_key)):
@@ -123,8 +143,6 @@ async def get_language_profiles(api_key: str = Depends(get_medusa_key)):
     return [{"id": 1, "name": "English", "cutoff": {"id": 1, "name": "English"}, "languages": [{"language": {"id": 1, "name": "English"}, "allowed": True}]}]
 
 @app.get("/api/v3/rootfolder")
-@app.get("/api/v3/rootFolder")
-@app.get("/api/v3/RootFolder")
 async def get_root_folders(api_key: str = Depends(get_medusa_key)):
     return [{"id": 1, "path": "/tv", "accessible": True, "freeSpace": 500000000000, "unmappedFolders": []}]
 
