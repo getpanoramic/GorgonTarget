@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import httpx
 
-app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.3.5")
+app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.3.6")
 
 MEDUSA_URL = os.getenv("MEDUSA_URL", "http://localhost:8081")
 async_client = httpx.AsyncClient(base_url=MEDUSA_URL, timeout=15.0)
@@ -186,4 +186,66 @@ async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa
             }
         return JSONResponse(status_code=res.status_code, content=res.json())
     except Exception as e:
-        return JSONResponse(status_code=502, content={"error": str
+        return JSONResponse(status_code=502, content={"error": str(e)})
+
+@app.get("/api/v3/series/lookup")
+async def series_lookup(term: str = Query(...), api_key: str = Depends(get_medusa_key)):
+    clean_term = urllib.parse.unquote(term)
+    query_term = clean_term.split(":")[-1] if clean_term.startswith("tvdb:") else clean_term
+    
+    print(f"[GorgonTarget] Processing lookup request for term: '{query_term}'")
+    try:
+        res = await async_client.get("/api/v2/series/lookup", params={"q": query_term, "indexer": "tvdb"}, headers=medusa_headers(api_key))
+        if res.status_code != 200: 
+            print(f"[GorgonTarget] Downstream Medusa lookup failed: {res.status_code} - {res.text}")
+            return []
+        return [{
+            "title": item.get("title"),
+            "tvdbId": item.get("ids", {}).get("tvdb"),
+            "overview": item.get("overview"),
+            "year": item.get("year", 0),
+            "remotePoster": item.get("image", "")
+        } for item in res.json()]
+    except Exception as e:
+        print(f"[GorgonTarget] Internal exception during lookup translation: {str(e)}")
+        return []
+
+@app.get("/api/v3/episode")
+async def get_episodes(seriesId: Optional[int] = Query(None), api_key: str = Depends(get_medusa_key)):
+    if not seriesId:
+        return []
+    try:
+        res = await async_client.get(f"/api/v2/series/{seriesId}/episodes", headers=medusa_headers(api_key))
+        if res.status_code != 200: 
+            return []
+        
+        sonarr_episodes = []
+        for ep in res.json():
+            sonarr_episodes.append({
+                "id": ep.get("id"),
+                "seriesId": seriesId,
+                "episodeFileId": 0 if ep.get("status") != "Downloaded" else ep.get("id"),
+                "seasonNumber": ep.get("season"),
+                "episodeNumber": ep.get("episode"),
+                "title": ep.get("title", f"Episode {ep.get('episode')}"),
+                "monitored": True,
+                "hasFile": True if ep.get("status") == "Downloaded" else False
+            })
+        return sonarr_episodes
+    except Exception:
+        return []
+
+# ---------------------------------------------------------------------------
+# 4. CALENDAR, QUEUE, WANTED & HISTORY
+# ---------------------------------------------------------------------------
+@app.get("/api/v3/calendar")
+async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: str = Depends(get_medusa_key)):
+    try:
+        res = await async_client.get("/api/v2/schedule", headers=medusa_headers(api_key))
+        if res.status_code != 200: 
+            return []
+        
+        calendar = []
+        for item in res.json().get("coming", []):
+            calendar.append({
+                "
