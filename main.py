@@ -9,7 +9,7 @@ from starlette.types import ASGIApp, Scope, Receive, Send
 import httpx
 
 # ---------------------------------------------------------------------------
-# ADVANCED PATH & CASE-INSENSITIVE ROUTING MIDDLEWARE
+# ADVANCED PATH & CASE-INSENSITIVE ROUTING MIDDLEWARE (WITH UA LOGGING)
 # ---------------------------------------------------------------------------
 class CaseInsensitiveAPIMiddleware:
     def __init__(self, app: ASGIApp):
@@ -17,7 +17,14 @@ class CaseInsensitiveAPIMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"] == "http":
+            # Extract headers and log the User-Agent and Path
+            headers = dict(scope.get("headers", []))
+            ua = headers.get(b"user-agent", b"Unknown").decode("utf-8", "ignore")
             path = scope.get("path", "")
+            method = scope.get("method", "UNKNOWN")
+            
+            # Print to logs for debugging
+            print(f"[GorgonTarget REQUEST] {method} {path} | UA: {ua}", file=sys.stderr, flush=True)
             
             # Normalize trailing slashes early
             if path.endswith("/") and len(path) > 1:
