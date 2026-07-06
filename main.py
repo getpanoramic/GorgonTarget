@@ -90,20 +90,18 @@ class SonarrCommand(BaseModel):
 # ---------------------------------------------------------------------------
 def extract_clean_integer_id(show_node: dict) -> int:
     raw_id = show_node.get("id")
+
     if isinstance(raw_id, dict):
-        raw_id = raw_id.get("tvdb") or raw_id.get("tmdb") or list(raw_id.values())[0]
-        
-    if not raw_id:
-        ids_block = show_node.get("ids", {})
-        if isinstance(ids_block, dict):
-            raw_id = ids_block.get("tvdb") or ids_block.get("tmdb") or ids_block.get("slug")
+        raw_id = (
+            raw_id.get("medusa")
+            or raw_id.get("tvdb")
+            or raw_id.get("tmdb")
+        )
 
     try:
         return int(raw_id)
     except (ValueError, TypeError):
-        if isinstance(raw_id, str) and raw_id.strip():
-            return sum(ord(char) for char in raw_id)
-        return 99999
+        return 0
 
 def extract_clean_year(show_node: dict) -> int:
     raw_year = show_node.get("year") or show_node.get("startYear")
@@ -161,52 +159,105 @@ async def core_system_status(api_key: str):
 
 async def core_all_series(api_key: str):
     log_debug("Fetching global show registry list via /api/v2/series")
-    res = await async_client.get("/api/v2/series", headers=medusa_headers(api_key))
+
+    res = await async_client.get(
+        "/api/v2/series",
+        headers=medusa_headers(api_key)
+    )
+
     if res.status_code != 200:
-        log_debug(f"Downstream Medusa global series fetch failed: {res.status_code}")
-        return JSONResponse(status_code=res.status_code, content=res.json())
-    
+        return JSONResponse(
+            status_code=res.status_code,
+            content=res.json()
+        )
+
     medusa_shows = res.json()
+
+    log_debug(
+        f"Medusa returned {len(medusa_shows)} series"
+    )
+
     sonarr_shows = []
-    for show in medusa_shows:
-        series_id = extract_clean_integer_id(show)
-        tvdb_id = show.get("ids", {}).get("tvdb") or series_id
-        if isinstance(tvdb_id, dict):
-            tvdb_id = tvdb_id.get("tvdb") or series_id
 
-        show_year = extract_clean_year(show)
-        show_title = show.get("title", f"Series {series_id}")
+    for idx, show in enumerate(medusa_shows):
 
-        # Fixes Bazarr's unique path SQLite constraint crashes by assigning explicit fallback subdirectories
+        ids = show.get("ids", {})
+
+        medusa_id = extract_clean_integer_id(show)
+
+        if not medusa_id:
+            medusa_id = idx + 1
+
+        tvdb_id = ids.get("tvdb")
+        tmdb_id = ids.get("tmdb")
+        imdb_id = ids.get("imdb")
+
+        title = show.get(
+            "title",
+            f"Series {medusa_id}"
+        )
+
         raw_path = show.get("path", "")
+
         if not raw_path or raw_path == "/tv":
-            safe_folder = show_title.replace("/", "_").replace("\\", "_")
-            series_path = f"/tv/{safe_folder}"
+            safe_folder = (
+                title
+                .replace("/", "_")
+                .replace("\\", "_")
+            )
+
+            path = f"/tv/{safe_folder}"
+
         else:
-            series_path = str(raw_path)
+            path = str(raw_path)
 
         sonarr_shows.append({
-            "id": int(series_id), 
-            "title": show_title,
-            "sortTitle": show_title.lower(),
-            "status": "continuing" if show.get("status") == "continuing" else "ended",
-            "overview": show.get("overview", ""),
-            "tvdbId": int(tvdb_id),
-            "imdbId": show.get("ids", {}).get("imdb", ""),
-            "year": show_year,
+
+            "id": medusa_id,
+
+            "tvdbId": int(tvdb_id) if tvdb_id else 0,
+            "tmdbId": int(tmdb_id) if tmdb_id else 0,
+            "imdbId": imdb_id or "",
+
+            "title": title,
+            "sortTitle": title.lower(),
+
+            "status": (
+                "continuing"
+                if show.get("status") == "continuing"
+                else "ended"
+            ),
+
+            "overview": show.get(
+                "overview",
+                ""
+            ),
+
+            "year": extract_clean_year(show),
+
             "images": [],
-            "alternateTitles": [], 
+            "alternateTitles": [],
             "genres": [],
+
             "seriesType": "standard",
-            "path": series_path,
+
+            "path": path,
+
             "profileId": 1,
             "languageProfileId": 1,
-            "monitored": not show.get("paused", False),
+
+            "monitored": not show.get(
+                "paused",
+                False
+            ),
+
             "useSceneNumbering": False,
+
             "added": "2026-01-01T00:00:00Z",
-            "seasons": [] 
+
+            "seasons": []
         })
-    log_debug(f"Successfully processed and translated {len(sonarr_shows)} shows back to Sonarr context.")
+
     return sonarr_shows
 
 # ---------------------------------------------------------------------------
@@ -279,6 +330,29 @@ async def get_all_series_v3(api_key: str = Depends(get_medusa_key)):
         log_debug(f"Exception handling processing global show lists: {str(e)}")
         return JSONResponse(status_code=502, content={"error": str(e)})
 
+@app.get("/api/v3/series/lookup")
+async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depends(get_medusa_key)):
+    if not term: return []
+    clean_term = urllib.parse.unquote(term).split(":")[-1].strip()
+    try:
+        res = await async_client.get("/api/v2/series/lookup", params={"q": clean_term, "indexer": "tvdb"}, headers=medusa_headers(api_key))
+        if res.status_code != 200: return []
+        return [{
+            "title": item.get("title"),
+            "tvdbId": extract_clean_integer_id(item),
+            "imdbId": item.get("ids", {}).get("imdb", ""),
+            "images": [],
+            "alternateTitles": [],
+            "genres": [],
+            "seriesType": "standard",
+            "overview": item.get("overview"),
+            "year": extract_clean_year(item),
+            "remotePoster": item.get("image", ""),
+            "added": "2026-01-01T00:00:00Z",
+        } for item in res.json()]
+    except Exception:
+        return []
+
 @app.get("/api/v3/series/{series_id}")
 async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_key)):
     if series_id == 0:
@@ -292,8 +366,9 @@ async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_ke
         show = res.json()
         clean_id = extract_clean_integer_id(show)
         show_year = extract_clean_year(show)
+        
         return {
-            "id": int(clean_id), 
+            "id": int(clean_id),
             "title": show.get("title"),
             "tvdbId": int(clean_id),
             "imdbId": show.get("ids", {}).get("imdb", ""),
@@ -339,29 +414,6 @@ async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa
         return JSONResponse(status_code=res.status_code, content=res.json())
     except Exception as e:
         return JSONResponse(status_code=502, content={"error": str(e)})
-
-@app.get("/api/v3/series/lookup")
-async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depends(get_medusa_key)):
-    if not term: return []
-    clean_term = urllib.parse.unquote(term).split(":")[-1].strip()
-    try:
-        res = await async_client.get("/api/v2/series/lookup", params={"q": clean_term, "indexer": "tvdb"}, headers=medusa_headers(api_key))
-        if res.status_code != 200: return []
-        return [{
-            "title": item.get("title"),
-            "tvdbId": extract_clean_integer_id(item),
-            "imdbId": item.get("ids", {}).get("imdb", ""),
-            "images": [],
-            "alternateTitles": [],
-            "genres": [],
-            "seriesType": "standard",
-            "overview": item.get("overview"),
-            "year": extract_clean_year(item),
-            "remotePoster": item.get("image", ""),
-            "added": "2026-01-01T00:00:00Z",
-        } for item in res.json()]
-    except Exception:
-        return []
 
 @app.get("/api/v3/episode")
 async def get_episodes(
