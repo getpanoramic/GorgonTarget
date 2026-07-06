@@ -33,7 +33,7 @@ class CaseInsensitiveAPIMiddleware:
 # ---------------------------------------------------------------------------
 # APP INITIALIZATION & LOGGER CONFIG
 # ---------------------------------------------------------------------------
-app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.4.7")
+app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.4.8")
 app.add_middleware(CaseInsensitiveAPIMiddleware)
 
 MEDUSA_URL = os.getenv("MEDUSA_URL", "http://localhost:8081")
@@ -155,6 +155,9 @@ async def core_all_series(api_key: str):
         if isinstance(tvdb_id, dict):
             tvdb_id = tvdb_id.get("tvdb") or series_id
 
+        # Safely capture target year properties
+        show_year = show.get("year", 0) or show.get("startYear", 0)
+
         sonarr_shows.append({
             "id": int(series_id), 
             "title": show.get("title"),
@@ -162,8 +165,10 @@ async def core_all_series(api_key: str):
             "status": "continuing" if show.get("status") == "continuing" else "ended",
             "overview": show.get("overview", ""),
             "tvdbId": int(tvdb_id),
+            "imdbId": show.get("ids", {}).get("imdb", ""),
+            "year": int(show_year), # FIX: Prevents Bazarr KeyError: 'year' crashes
             "images": [],
-            "alternateTitles": [], # FIX: Prevents Bazarr KeyError parser crashes
+            "alternateTitles": [], 
             "genres": [],
             "seriesType": "standard",
             "path": show.get("path", "/tv"),
@@ -171,6 +176,7 @@ async def core_all_series(api_key: str):
             "languageProfileId": 1,
             "monitored": not show.get("paused", False),
             "useSceneNumbering": False,
+            "added": "2026-01-01T00:00:00Z",
             "seasons": [] 
         })
     log_debug(f"Successfully processed and translated {len(sonarr_shows)} shows back to Sonarr context.")
@@ -249,7 +255,7 @@ async def get_all_series_v3(api_key: str = Depends(get_medusa_key)):
 @app.get("/api/v3/series/{series_id}")
 async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_key)):
     if series_id == 0:
-        return {"id": 0, "title": "Initialization Stub", "tvdbId": 0, "images": [], "alternateTitles": [], "genres": [], "seriesType": "standard", "path": "/tv", "monitored": False}
+        return {"id": 0, "title": "Initialization Stub", "tvdbId": 0, "year": 0, "imdbId": "", "images": [], "alternateTitles": [], "genres": [], "seriesType": "standard", "path": "/tv", "monitored": False, "added": "2026-01-01T00:00:00Z"}
         
     try:
         res = await async_client.get(f"/api/v2/series/{series_id}", headers=medusa_headers(api_key))
@@ -258,16 +264,20 @@ async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_ke
             
         show = res.json()
         clean_id = extract_clean_integer_id(show)
+        show_year = show.get("year", 0) or show.get("startYear", 0)
         return {
             "id": int(clean_id), 
             "title": show.get("title"),
             "tvdbId": int(clean_id),
+            "imdbId": show.get("ids", {}).get("imdb", ""),
+            "year": int(show_year),
             "images": [],
             "alternateTitles": [],
             "genres": [],
             "seriesType": "standard",
             "path": show.get("path", "/tv"),
             "monitored": not show.get("paused", False),
+            "added": "2026-01-01T00:00:00Z",
         }
     except Exception:
         raise HTTPException(status_code=404, detail="Series not found")
@@ -288,13 +298,16 @@ async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa
                 "id": int(clean_id),
                 "title": payload.title,
                 "tvdbId": payload.tvdbId,
+                "imdbId": "",
+                "year": 0,
                 "images": [],
                 "alternateTitles": [],
                 "genres": [],
                 "seriesType": "standard",
                 "path": medusa_payload["config"]["location"],
                 "monitored": payload.monitored,
-                "profileId": payload.profileId
+                "profileId": payload.profileId,
+                "added": "2026-01-01T00:00:00Z",
             }
         return JSONResponse(status_code=res.status_code, content=res.json())
     except Exception as e:
@@ -310,13 +323,15 @@ async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depend
         return [{
             "title": item.get("title"),
             "tvdbId": extract_clean_integer_id(item),
+            "imdbId": item.get("ids", {}).get("imdb", ""),
             "images": [],
             "alternateTitles": [],
             "genres": [],
             "seriesType": "standard",
             "overview": item.get("overview"),
-            "year": item.get("year", 0),
-            "remotePoster": item.get("image", "")
+            "year": int(item.get("year", 0)),
+            "remotePoster": item.get("image", ""),
+            "added": "2026-01-01T00:00:00Z",
         } for item in res.json()]
     except Exception:
         return []
