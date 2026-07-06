@@ -214,24 +214,29 @@ async def core_all_series(api_key: str):
         # Medusa usually stores the indexer name in 'indexer' or 'default_indexer'
         indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
         
+        # 1. Access the 'ids' object
         ids = show.get("ids", {})
 
-        # 1. Extract the slug string directly from the 'ids' dictionary
-        # This is what you were missing—getting the specific value out of the dict
-        slug = ids.get("slug")
-
-        # 2. Fallback only if the 'slug' key is missing in the API response
-        if not slug:
+        # 2. Extract the slug by specifically accessing the 'slug' key
+        # We also add a safety check to ensure it's not a dict
+        slug_val = ids.get("slug")
+        
+        # If slug_val is itself a dict (some Medusa forks do this), extract 'slug' from it
+        if isinstance(slug_val, dict):
+            slug_val = slug_val.get("slug")
+            
+        # 3. Fallback logic if slug_val is still missing
+        if not slug_val:
             indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
             indexer_id = ids.get(indexer)
-            if indexer and indexer_id:
-                slug = f"{indexer}{indexer_id}"
-            else:
-                slug = str(show.get("id", medusa_id))
+            slug_val = f"{indexer}{indexer_id}" if (indexer and indexer_id) else str(show.get("id", medusa_id))
 
-        # 3. Store ONLY the string slug in the map
-        # By ensuring 'slug' is a string here, the URL will be formatted correctly
-        SERIES_ID_MAP[medusa_id] = str(slug)
+        # 4. Final cast to string and save to the map
+        final_slug = str(slug_val)
+        SERIES_ID_MAP[medusa_id] = final_slug
+        
+        # Debugging step: Verify exactly what is being stored
+        log_debug(f"Mapping ID {medusa_id} to slug: {final_slug} (Type: {type(final_slug)})")
 
         title = show.get(
             "title",
