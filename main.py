@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import httpx
 
-app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.3.6")
+app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.3.7")
 
 MEDUSA_URL = os.getenv("MEDUSA_URL", "http://localhost:8081")
 async_client = httpx.AsyncClient(base_url=MEDUSA_URL, timeout=15.0)
@@ -248,4 +248,83 @@ async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: 
         calendar = []
         for item in res.json().get("coming", []):
             calendar.append({
-                "
+                "seriesId": item.get("seriesId"),
+                "episodeNumber": item.get("episode"),
+                "seasonNumber": item.get("season"),
+                "title": item.get("title"),
+                "airDateUtc": item.get("airDate")
+            })
+        return calendar
+    except Exception:
+        return []
+
+@app.get("/api/v3/wanted/missing")
+async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
+    try:
+        res = await async_client.get("/api/v2/schedule", headers=medusa_headers(api_key))
+        if res.status_code != 200:
+            return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
+        
+        medusa_schedule = res.json()
+        combined = medusa_schedule.get("missed", []) + medusa_schedule.get("coming", [])
+        
+        records = [{
+            "id": idx + 1000,
+            "seriesId": item.get("seriesId"),
+            "episodeNumber": item.get("episode"),
+            "seasonNumber": item.get("season"),
+            "title": item.get("title"),
+            "airDateUtc": item.get("airDate")
+        } for idx, item in enumerate(combined)]
+        
+        return {
+            "page": 1,
+            "pageSize": len(records) if records else 20,
+            "totalRecords": len(records),
+            "records": records
+        }
+    except Exception:
+        return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
+
+@app.get("/api/v3/queue", dependencies=[Depends(get_medusa_key)])
+async def get_queue():
+    return {"page": 1, "pageSize": 20, "sortKey": "id", "sortDirection": "descending", "totalRecords": 0, "records": []}
+
+@app.get("/api/v3/queue/status", dependencies=[Depends(get_medusa_key)])
+async def get_queue_status():
+    return {"unhealthyCount": 0, "unknownCount": 0, "errors": False, "warnings": False}
+
+@app.get("/api/v3/history", dependencies=[Depends(get_medusa_key)])
+async def get_history():
+    return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
+
+# ---------------------------------------------------------------------------
+# 5. HARDWARE AGENTS
+# ---------------------------------------------------------------------------
+@app.get("/api/v3/downloadclient", dependencies=[Depends(get_medusa_key)])
+async def get_download_clients(): return []
+
+@app.get("/api/v3/indexer", dependencies=[Depends(get_medusa_key)])
+async def get_indexers(): return []
+
+@app.get("/api/v3/metadata", dependencies=[Depends(get_medusa_key)])
+async def get_metadata_consumers(): return []
+
+# ---------------------------------------------------------------------------
+# 6. COMMAND ORCHESTRATION ENGINE
+# ---------------------------------------------------------------------------
+@app.post("/api/v3/command")
+async def execute_command(command: SonarrCommand, api_key: str = Depends(get_medusa_key)):
+    if command.name in ["RefreshSeries", "RescanSeries"] and command.seriesId:
+        await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-update", headers=medusa_headers(api_key))
+        return {"id": 999, "name": command.name, "state": "completed"}
+    
+    elif command.name == "SeriesSearch" and command.seriesId:
+        await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-search", headers=medusa_headers(api_key))
+        return {"id": 998, "name": command.name, "state": "completed"}
+        
+    return {"id": 1000, "name": command.name, "state": "completed"}
+
+@app.get("/api/v3/command/{command_id}", dependencies=[Depends(get_medusa_key)])
+async def get_command_status(command_id: int):
+    return {"id": command_id, "state": "completed"}
