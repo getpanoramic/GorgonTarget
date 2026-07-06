@@ -33,7 +33,7 @@ class CaseInsensitiveAPIMiddleware:
 # ---------------------------------------------------------------------------
 # APP INITIALIZATION & LOGGER CONFIG
 # ---------------------------------------------------------------------------
-app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.4.6")
+app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.4.7")
 app.add_middleware(CaseInsensitiveAPIMiddleware)
 
 MEDUSA_URL = os.getenv("MEDUSA_URL", "http://localhost:8081")
@@ -82,10 +82,7 @@ class SonarrCommand(BaseModel):
 # ID CONVERSION SAFETY FUNCTION
 # ---------------------------------------------------------------------------
 def extract_clean_integer_id(show_node: dict) -> int:
-    """ Forces the extraction of a clean primitive scalar integer from complex Medusa blocks """
     raw_id = show_node.get("id")
-    
-    # If the root ID is a dictionary mapping compound indices, extract underlying primitives
     if isinstance(raw_id, dict):
         raw_id = raw_id.get("tvdb") or raw_id.get("tmdb") or list(raw_id.values())[0]
         
@@ -97,7 +94,6 @@ def extract_clean_integer_id(show_node: dict) -> int:
     try:
         return int(raw_id)
     except (ValueError, TypeError):
-        # Hash clean fallback string characters to integers if alphanumeric string slugs leak out
         if isinstance(raw_id, str) and raw_id.strip():
             return sum(ord(char) for char in raw_id)
         return 99999
@@ -166,7 +162,10 @@ async def core_all_series(api_key: str):
             "status": "continuing" if show.get("status") == "continuing" else "ended",
             "overview": show.get("overview", ""),
             "tvdbId": int(tvdb_id),
-            "images": [], # FIX: Prevents Bazarr KeyError parser crashes
+            "images": [],
+            "alternateTitles": [], # FIX: Prevents Bazarr KeyError parser crashes
+            "genres": [],
+            "seriesType": "standard",
             "path": show.get("path", "/tv"),
             "profileId": 1,
             "languageProfileId": 1,
@@ -249,10 +248,8 @@ async def get_all_series_v3(api_key: str = Depends(get_medusa_key)):
 
 @app.get("/api/v3/series/{series_id}")
 async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_key)):
-    log_debug(f"Polling database for individual show entry match ID: {series_id}")
-    
     if series_id == 0:
-        return {"id": 0, "title": "Initialization Stub", "tvdbId": 0, "images": [], "path": "/tv", "monitored": False}
+        return {"id": 0, "title": "Initialization Stub", "tvdbId": 0, "images": [], "alternateTitles": [], "genres": [], "seriesType": "standard", "path": "/tv", "monitored": False}
         
     try:
         res = await async_client.get(f"/api/v2/series/{series_id}", headers=medusa_headers(api_key))
@@ -266,6 +263,9 @@ async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_ke
             "title": show.get("title"),
             "tvdbId": int(clean_id),
             "images": [],
+            "alternateTitles": [],
+            "genres": [],
+            "seriesType": "standard",
             "path": show.get("path", "/tv"),
             "monitored": not show.get("paused", False),
         }
@@ -289,6 +289,9 @@ async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa
                 "title": payload.title,
                 "tvdbId": payload.tvdbId,
                 "images": [],
+                "alternateTitles": [],
+                "genres": [],
+                "seriesType": "standard",
                 "path": medusa_payload["config"]["location"],
                 "monitored": payload.monitored,
                 "profileId": payload.profileId
@@ -308,6 +311,9 @@ async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depend
             "title": item.get("title"),
             "tvdbId": extract_clean_integer_id(item),
             "images": [],
+            "alternateTitles": [],
+            "genres": [],
+            "seriesType": "standard",
             "overview": item.get("overview"),
             "year": item.get("year", 0),
             "remotePoster": item.get("image", "")
