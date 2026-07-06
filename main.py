@@ -9,7 +9,7 @@ from starlette.types import ASGIApp, Scope, Receive, Send
 import httpx
 
 # ---------------------------------------------------------------------------
-# CASE-INSENSITIVE ROUTING MIDDLEWARE
+# ADVANCED PATH & CASE-INSENSITIVE ROUTING MIDDLEWARE
 # ---------------------------------------------------------------------------
 class CaseInsensitiveAPIMiddleware:
     def __init__(self, app: ASGIApp):
@@ -18,14 +18,23 @@ class CaseInsensitiveAPIMiddleware:
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"] == "http":
             path = scope.get("path", "")
-            if path.startswith("/api/v3"):
+            
+            # Normalize trailing slashes early
+            if path.endswith("/") and len(path) > 1:
+                path = path.rstrip("/")
+                
+            # If it's a v3 route or a direct legacy route, keep its structure but lowercase for the router
+            if path.startswith("/api"):
                 scope["path"] = path.lower()
+            else:
+                scope["path"] = path
+
         await self.app(scope, receive, send)
 
 # ---------------------------------------------------------------------------
 # APP INITIALIZATION & LOGGER CONFIG
 # ---------------------------------------------------------------------------
-app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.4.3")
+app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.4.5")
 app.add_middleware(CaseInsensitiveAPIMiddleware)
 
 MEDUSA_URL = os.getenv("MEDUSA_URL", "http://localhost:8081")
@@ -71,17 +80,9 @@ class SonarrCommand(BaseModel):
     episodeIds: Optional[List[int]] = None
 
 # ---------------------------------------------------------------------------
-# ROOT HEALTH PATHS
+# REUSABLE CORE IMPLEMENTATIONS (SHARED ACROSS V2/V3)
 # ---------------------------------------------------------------------------
-@app.get("/")
-async def root_index():
-    return {"status": "running", "service": "GorgonTarget Proxy"}
-
-# ---------------------------------------------------------------------------
-# 1. SYSTEM & CONFIGURATION ENDPOINTS
-# ---------------------------------------------------------------------------
-@app.get("/api/v3/system/status")
-async def get_system_status(api_key: str = Depends(get_medusa_key)):
+async def core_system_status(api_key: str):
     medusa_version = "3.0.10.1567"
     os_name = "linux"
     startup_path = "/app"
@@ -120,6 +121,64 @@ async def get_system_status(api_key: str = Depends(get_medusa_key)):
         "appName": "Sonarr"
     }
 
+async def core_all_series(api_key: str):
+    log_debug("Fetching global show registry list via /api/v2/series")
+    res = await async_client.get("/api/v2/series", headers=medusa_headers(api_key))
+    if res.status_code != 200:
+        log_debug(f"Downstream Medusa global series fetch failed: {res.status_code}")
+        return JSONResponse(status_code=res.status_code, content=res.json())
+    
+    medusa_shows = res.json()
+    sonarr_shows = []
+    for show in medusa_shows:
+        series_id = show.get("id")
+        tvdb_id = show.get("ids", {}).get("tvdb") or series_id
+        
+        sonarr_shows.append({
+            "id": series_id, 
+            "title": show.get("title"),
+            "sortTitle": show.get("title", "").lower(),
+            "status": "continuing" if show.get("status") == "continuing" else "ended",
+            "overview": show.get("overview", ""),
+            "tvdbId": tvdb_id,
+            "path": show.get("path", "/tv"),
+            "profileId": 1,
+            "languageProfileId": 1,
+            "monitored": not show.get("paused", False),
+            "useSceneNumbering": False,
+            "seasons": [] 
+        })
+    log_debug(f"Successfully processed and translated {len(sonarr_shows)} shows back to Sonarr context.")
+    return sonarr_shows
+
+# ---------------------------------------------------------------------------
+# EXPLICIT LEGACY V2 PATH ROUTING FALLBACKS
+# ---------------------------------------------------------------------------
+@app.get("/api/system/status")
+async def get_system_status_v2(api_key: str = Depends(get_medusa_key)):
+    log_debug("Handling Legacy v2 System Status API probe path.")
+    return await core_system_status(api_key)
+
+@app.get("/api/series")
+async def get_all_series_v2(api_key: str = Depends(get_medusa_key)):
+    log_debug("Handling Legacy v2 Series API registry query path.")
+    try:
+        return await core_all_series(api_key)
+    except Exception as e:
+        log_debug(f"Exception handling legacy series list processing: {str(e)}")
+        return JSONResponse(status_code=502, content={"error": str(e)})
+
+# ---------------------------------------------------------------------------
+# CORE MODERN V3 ENDPOINTS
+# ---------------------------------------------------------------------------
+@app.get("/")
+async def root_index():
+    return {"status": "running", "service": "GorgonTarget Proxy"}
+
+@app.get("/api/v3/system/status")
+async def get_system_status_v3(api_key: str = Depends(get_medusa_key)):
+    return await core_system_status(api_key)
+
 @app.get("/api/v3/diskspace")
 async def get_disk_space(api_key: str = Depends(get_medusa_key)):
     return [{
@@ -129,9 +188,6 @@ async def get_disk_space(api_key: str = Depends(get_medusa_key)):
         "totalSpace": 1000000000000
     }]
 
-# ---------------------------------------------------------------------------
-# 2. PROFILES, TAGS, AND CONFIGURATIONS
-# ---------------------------------------------------------------------------
 @app.get("/api/v3/qualityprofile")
 async def get_quality_profiles(api_key: str = Depends(get_medusa_key)):
     return [
@@ -159,44 +215,10 @@ async def get_tags(api_key: str = Depends(get_medusa_key)):
 async def get_custom_formats(api_key: str = Depends(get_medusa_key)): 
     return []
 
-# ---------------------------------------------------------------------------
-# 3. SERIES & EPISODE TRANSFORMATION LOGIC
-# ---------------------------------------------------------------------------
 @app.get("/api/v3/series")
-async def get_all_series(api_key: str = Depends(get_medusa_key)):
-    log_debug("Fetching global show registry list via /api/v2/series")
+async def get_all_series_v3(api_key: str = Depends(get_medusa_key)):
     try:
-        res = await async_client.get("/api/v2/series", headers=medusa_headers(api_key))
-        if res.status_code != 200:
-            log_debug(f"Downstream Medusa global series fetch failed: {res.status_code}")
-            return JSONResponse(status_code=res.status_code, content=res.json())
-        
-        medusa_shows = res.json()
-        sonarr_shows = []
-        for show in medusa_shows:
-            # FIX: Fallback safely to TVDB IDs so 'id' fields are never 0
-            series_id = show.get("ids", {}).get("tvdb") or show.get("id")
-            try:
-                series_id = int(series_id)
-            except (ValueError, TypeError):
-                series_id = 99999  # Safe unique fallback integer if conversion fails
-                
-            sonarr_shows.append({
-                "id": series_id, 
-                "title": show.get("title"),
-                "sortTitle": show.get("title", "").lower(),
-                "status": "continuing" if show.get("status") == "continuing" else "ended",
-                "overview": show.get("overview", ""),
-                "tvdbId": series_id,
-                "path": show.get("path", "/tv"),
-                "profileId": 1,
-                "languageProfileId": 1,
-                "monitored": not show.get("paused", False),
-                "useSceneNumbering": False,
-                "seasons": [] 
-            })
-        log_debug(f"Successfully processed and translated {len(sonarr_shows)} shows back to Sonarr UI context.")
-        return sonarr_shows
+        return await core_all_series(api_key)
     except Exception as e:
         log_debug(f"Exception handling processing global show lists: {str(e)}")
         return JSONResponse(status_code=502, content={"error": str(e)})
@@ -212,10 +234,6 @@ async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_ke
     try:
         res = await async_client.get(f"/api/v2/series/{series_id}", headers=medusa_headers(api_key))
         if res.status_code != 200:
-            # Second attempt via tracking direct TVDB indexing compatibility fallback
-            res = await async_client.get(f"/api/v2/series/tvdb:{series_id}", headers=medusa_headers(api_key))
-            
-        if res.status_code != 200:
             log_debug(f"Medusa single show ID fetch could not find target index: {series_id}")
             raise HTTPException(status_code=404, detail="Series not found")
             
@@ -223,7 +241,7 @@ async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_ke
         return {
             "id": series_id, 
             "title": show.get("title"),
-            "tvdbId": series_id,
+            "tvdbId": show.get("ids", {}).get("tvdb") or series_id,
             "path": show.get("path", "/tv"),
             "monitored": not show.get("paused", False),
         }
@@ -232,7 +250,7 @@ async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_ke
 
 @app.post("/api/v3/series")
 async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa_key)):
-    log_debug(f"Interpreting queue update payload request to insert TVDB index: {payload.tvdbId}")
+    log_debug(f"Interpreting queue update payload request to insert index: {payload.tvdbId}")
     medusa_payload = {
         "config": {
             "location": f"{payload.rootFolderPath}/{payload.title}",
@@ -245,8 +263,9 @@ async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa
     try:
         res = await async_client.post("/api/v2/series", json=medusa_payload, headers=medusa_headers(api_key))
         if res.status_code in [200, 201]:
+            new_show = res.json()
             return {
-                "id": payload.tvdbId,
+                "id": new_show.get("id", payload.tvdbId),
                 "title": payload.title,
                 "tvdbId": payload.tvdbId,
                 "path": medusa_payload["config"]["location"],
@@ -264,9 +283,9 @@ async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depend
         return []
     
     clean_term = urllib.parse.unquote(term)
-    if clean_term.lower().startswith("tvdb:"):
+    if ":" in clean_term:
         query_term = clean_term.split(":")[-1].strip()
-        log_debug(f"Extracted direct tracking TVDB string index sequence: '{query_term}'")
+        log_debug(f"Extracted direct tracking cross-indexer token sequence: '{query_term}'")
     else:
         query_term = clean_term
     
@@ -281,7 +300,7 @@ async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depend
         for item in items:
             translated_results.append({
                 "title": item.get("title"),
-                "tvdbId": item.get("ids", {}).get("tvdb"),
+                "tvdbId": item.get("ids", {}).get("tvdb") or item.get("id"),
                 "overview": item.get("overview"),
                 "year": item.get("year", 0),
                 "remotePoster": item.get("image", "")
@@ -373,7 +392,6 @@ async def get_queue_status(api_key: str = Depends(get_medusa_key)):
 
 @app.get("/api/v3/history")
 async def get_history(api_key: str = Depends(get_medusa_key)):
-    # FIX: Return fully mapped envelope object block rather than an empty flat array
     return {
         "page": 1,
         "pageSize": 100,
