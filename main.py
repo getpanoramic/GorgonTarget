@@ -449,27 +449,23 @@ async def get_episodes(
     if not target_id:
         return []
 
-    # 1. Ensure cache is warm
     if not SERIES_ID_MAP:
         await core_all_series(api_key)
 
-    # 2. Resolve Sonarr ID -> Medusa Internal ID
+    # Resolve ID
     medusa_id = SERIES_ID_MAP.get(target_id, target_id)
 
-    log_debug(f"Fetching episodes for Sonarr ID {target_id} (Medusa ID {medusa_id})")
-
+    # Use the path-based structure confirmed by your example URL:
+    # /api/v2/series/{id}/episodes
     try:
-        # We use the query parameter structure for Medusa V2.
-        # If this continues to fail with 400, the error log will now reveal why.
-        # Updated implementation
+        url_path = f"/api/v2/series/{medusa_id}/episodes"
         res = await async_client.get(
-            f"/api/v2/series/{medusa_id}/episodes",
+            url_path,
             headers=medusa_headers(api_key)
         )
         
-        # LOGGING THE ERROR: This is the most important part to fix your 400 error.
         if res.status_code != 200:
-            log_debug(f"Medusa returned {res.status_code} for {medusa_id}. Server response: {res.text}")
+            log_debug(f"Medusa returned {res.status_code} for {url_path}. Server response: {res.text}")
             return []
 
         medusa_eps = res.json()
