@@ -25,7 +25,7 @@ class CaseInsensitiveAPIMiddleware:
 # ---------------------------------------------------------------------------
 # APP INITIALIZATION & LOGGER CONFIG
 # ---------------------------------------------------------------------------
-app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.4.2")
+app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.4.3")
 app.add_middleware(CaseInsensitiveAPIMiddleware)
 
 MEDUSA_URL = os.getenv("MEDUSA_URL", "http://localhost:8081")
@@ -174,13 +174,20 @@ async def get_all_series(api_key: str = Depends(get_medusa_key)):
         medusa_shows = res.json()
         sonarr_shows = []
         for show in medusa_shows:
+            # FIX: Fallback safely to TVDB IDs so 'id' fields are never 0
+            series_id = show.get("ids", {}).get("tvdb") or show.get("id")
+            try:
+                series_id = int(series_id)
+            except (ValueError, TypeError):
+                series_id = 99999  # Safe unique fallback integer if conversion fails
+                
             sonarr_shows.append({
-                "id": show.get("id"), 
+                "id": series_id, 
                 "title": show.get("title"),
                 "sortTitle": show.get("title", "").lower(),
                 "status": "continuing" if show.get("status") == "continuing" else "ended",
                 "overview": show.get("overview", ""),
-                "tvdbId": show.get("ids", {}).get("tvdb") or show.get("id"),
+                "tvdbId": series_id,
                 "path": show.get("path", "/tv"),
                 "profileId": 1,
                 "languageProfileId": 1,
@@ -198,7 +205,6 @@ async def get_all_series(api_key: str = Depends(get_medusa_key)):
 async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_key)):
     log_debug(f"Polling database for individual show entry match ID: {series_id}")
     
-    # FIX: Catch initialization polls for ID 0 gracefully so sync sequence doesn't crash
     if series_id == 0:
         log_debug("Intercepted query for context ID 0. Sending back initialization safe-stub.")
         return {"id": 0, "title": "Initialization Stub", "tvdbId": 0, "path": "/tv", "monitored": False}
@@ -206,13 +212,18 @@ async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_ke
     try:
         res = await async_client.get(f"/api/v2/series/{series_id}", headers=medusa_headers(api_key))
         if res.status_code != 200:
+            # Second attempt via tracking direct TVDB indexing compatibility fallback
+            res = await async_client.get(f"/api/v2/series/tvdb:{series_id}", headers=medusa_headers(api_key))
+            
+        if res.status_code != 200:
             log_debug(f"Medusa single show ID fetch could not find target index: {series_id}")
             raise HTTPException(status_code=404, detail="Series not found")
+            
         show = res.json()
         return {
-            "id": show.get("id"), 
+            "id": series_id, 
             "title": show.get("title"),
-            "tvdbId": show.get("ids", {}).get("tvdb") or show.get("id"),
+            "tvdbId": series_id,
             "path": show.get("path", "/tv"),
             "monitored": not show.get("paused", False),
         }
@@ -253,7 +264,6 @@ async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depend
         return []
     
     clean_term = urllib.parse.unquote(term)
-    # FIX: Explicitly parse and isolate numerical values out of complex 'tvdb:XXXXX' expressions
     if clean_term.lower().startswith("tvdb:"):
         query_term = clean_term.split(":")[-1].strip()
         log_debug(f"Extracted direct tracking TVDB string index sequence: '{query_term}'")
@@ -363,7 +373,15 @@ async def get_queue_status(api_key: str = Depends(get_medusa_key)):
 
 @app.get("/api/v3/history")
 async def get_history(api_key: str = Depends(get_medusa_key)):
-    return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
+    # FIX: Return fully mapped envelope object block rather than an empty flat array
+    return {
+        "page": 1,
+        "pageSize": 100,
+        "sortKey": "date",
+        "sortDirection": "descending",
+        "totalRecords": 0,
+        "records": []
+    }
 
 # ---------------------------------------------------------------------------
 # 5. HARDWARE AGENTS
