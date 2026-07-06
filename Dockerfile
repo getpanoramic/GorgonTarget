@@ -1,7 +1,10 @@
-# --- Build / Dependency Stage ---
-FROM python:3.11-slim AS builder
+# --- Build / Dependency Stage (Switched to Alpine) ---
+FROM python:3.11-alpine AS builder
 
 WORKDIR /app
+
+# Alpine requires build-base/gcc to compile certain python wheels if pre-built wheels aren't found
+RUN apk add --no-cache build-base
 
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -14,7 +17,7 @@ FROM python:3.11-alpine
 
 WORKDIR /app
 
-# Copy the pre-installed dependencies from the builder stage
+# Copy the pre-installed musl-compiled dependencies
 COPY --from=builder /opt/venv /opt/venv
 COPY main.py .
 
@@ -27,6 +30,6 @@ ENV PATH="/opt/venv/bin:$PATH" \
 RUN adduser -D appuser
 USER appuser
 
-EXPOSE 8000
+EXPOSE 8888
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8888", "--workers", "1"]
