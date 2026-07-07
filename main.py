@@ -197,22 +197,15 @@ async def core_all_series(api_key: str):
         # 1. Extract IDs and calculate primary indexer
         ids = show.get("ids", {})
         medusa_id = extract_clean_integer_id(show)
+        # Construct the slug string (e.g., "tvdb1911")
         indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
+        val = ids.get(indexer) or ids.get("tvdb") or ids.get("tmdb")
+        slug_string = f"{indexer}{val}" if val else str(medusa_id)
         
-        # 2. Get the specific ID for this indexer, fallback to tvdb/tmdb
-        indexer_id = ids.get(indexer) or ids.get("tvdb") or ids.get("tmdb")
-        
-        # 3. Construct the full slug string (e.g., "tvdb75805")
-        # If no indexer ID is found, fallback to the medusa_id
-        if indexer_id:
-            slug_string = f"{indexer}{indexer_id}"
-        else:
-            slug_string = str(medusa_id)
-        
-        # 4. Map the Sonarr ID to the FULL SLUG STRING
+        # KEY = Integer (Sonarr ID), VALUE = String (Slug like 'tvdb1911')
         SERIES_ID_MAP[int(medusa_id)] = slug_string
         
-        log_debug(f"Mapping ID {medusa_id} to slug: {slug_string}")
+        log_debug(f"Mapping Sonarr ID {medusa_id} to Medusa Slug: {slug_string}")
         
         # Redefine ID variables for your append block
         tvdb_id = ids.get("tvdb")
@@ -438,30 +431,18 @@ async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa
         return JSONResponse(status_code=502, content={"error": str(e)})
 
 @app.get("/api/v3/episode")
-async def get_episodes(
-    seriesId: Optional[int] = Query(None),
-    seriesid: Optional[int] = Query(None),
-    includeEpisodeFile: bool = Query(False),
-    api_key: str = Depends(get_medusa_key)
-):
+async def get_episodes(...):
     target_id = seriesId or seriesid
-    if not target_id:
-        return []
+    if not target_id: return []
+    if not SERIES_ID_MAP: await core_all_series(api_key)
 
-    if not SERIES_ID_MAP:
-        await core_all_series(api_key)
-
-    # This retrieves the string 'tvdb75805' from the map
+    # Resolve the slug string (e.g., 'tvdb1911')
     medusa_slug = SERIES_ID_MAP.get(target_id, str(target_id))
 
     try:
-        # Use the slug directly in the URL
+        # Use the string SLUG in the path
         url_path = f"/api/v2/series/{medusa_slug}/episodes"
         res = await async_client.get(url_path, headers=medusa_headers(api_key))
-        res = await async_client.get(
-            url_path,
-            headers=medusa_headers(api_key)
-        )
         
         if res.status_code != 200:
             log_debug(f"Medusa returned {res.status_code} for {url_path}. Server response: {res.text}")
