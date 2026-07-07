@@ -172,7 +172,10 @@ async def core_all_series(api_key: str):
         imdb_id = ids.get("imdb")
         title = show.get("title", f"Series {medusa_id}")
         raw_path = show.get("path", "")
-        path = f"/tv/{title.replace('/', '_').replace('\\', '_')}" if not raw_path or raw_path == "/tv" else str(raw_path)
+        
+        # Fixed f-string backslash issue here
+        clean_title = title.replace('/', '_').replace('\\', '_')
+        path = f"/tv/{clean_title}" if not raw_path or raw_path == "/tv" else str(raw_path)
 
         sonarr_shows.append({
             "id": int(medusa_id),
