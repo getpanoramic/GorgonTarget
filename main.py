@@ -194,26 +194,25 @@ async def core_all_series(api_key: str):
     SERIES_ID_MAP.clear()
 
     for idx, show in enumerate(medusa_shows):
+        # 1. Extract IDs and calculate primary indexer
         ids = show.get("ids", {})
         medusa_id = extract_clean_integer_id(show)
-        
-        # 1. Determine indexer
         indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
         
-        # 2. Get the value, fallback to 'tvdb' or 'tmdb' if the primary indexer ID is missing
-        val = ids.get(indexer) or ids.get("tvdb") or ids.get("tmdb")
+        # 2. Get the specific ID for this indexer, fallback to tvdb/tmdb
+        indexer_id = ids.get(indexer) or ids.get("tvdb") or ids.get("tmdb")
         
-        # 3. Create the slug string only if we have a valid value
-        if val:
-            slug_string = f"{indexer}{val}"
+        # 3. Construct the full slug string (e.g., "tvdb75805")
+        # If no indexer ID is found, fallback to the medusa_id
+        if indexer_id:
+            slug_string = f"{indexer}{indexer_id}"
         else:
-            # Absolute fallback: use the medusa_id as a string
             slug_string = str(medusa_id)
         
-        # 4. Map it
+        # 4. Map the Sonarr ID to the FULL SLUG STRING
         SERIES_ID_MAP[int(medusa_id)] = slug_string
         
-        log_debug(f"Mapping Medusa ID {medusa_id} to slug: {slug_string}")
+        log_debug(f"Mapping ID {medusa_id} to slug: {slug_string}")
         
         # Redefine ID variables for your append block
         tvdb_id = ids.get("tvdb")
@@ -452,12 +451,11 @@ async def get_episodes(
     if not SERIES_ID_MAP:
         await core_all_series(api_key)
 
-    # Resolve ID
-    # This now returns the full slug string (e.g., 'tvdb1911')
+    # This retrieves the string 'tvdb75805' from the map
     medusa_slug = SERIES_ID_MAP.get(target_id, str(target_id))
 
     try:
-        # Medusa needs the slug string here
+        # Use the slug directly in the URL
         url_path = f"/api/v2/series/{medusa_slug}/episodes"
         res = await async_client.get(url_path, headers=medusa_headers(api_key))
         res = await async_client.get(
