@@ -194,15 +194,17 @@ async def core_all_series(api_key: str):
     SERIES_ID_MAP.clear()
 
     for idx, show in enumerate(medusa_shows):
-        # 1. Extract IDs and calculate primary indexer
         ids = show.get("ids", {})
         medusa_id = extract_clean_integer_id(show)
-        # Construct the slug string (e.g., "tvdb1911")
+        
+        # Determine indexer and construct the SLUG
         indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
         val = ids.get(indexer) or ids.get("tvdb") or ids.get("tmdb")
+        
+        # BUILD THE SLUG (e.g., "tvdb324846")
         slug_string = f"{indexer}{val}" if val else str(medusa_id)
         
-        # KEY = Integer (Sonarr ID), VALUE = String (Slug like 'tvdb1911')
+        # CRITICAL: Map Sonarr ID (int) -> Medusa SLUG (string)
         SERIES_ID_MAP[int(medusa_id)] = slug_string
         
         log_debug(f"Mapping Sonarr ID {medusa_id} to Medusa Slug: {slug_string}")
