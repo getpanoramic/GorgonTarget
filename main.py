@@ -194,15 +194,16 @@ async def core_all_series(api_key: str):
     SERIES_ID_MAP.clear()
 
     for idx, show in enumerate(medusa_shows):
-        # Extract metadata
-        # 1. Get the 'ids' dictionary
         ids = show.get("ids", {})
         medusa_id = extract_clean_integer_id(show)
-        if not medusa_id:
-            medusa_id = idx + 1
+        indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
+        
+        # Build the slug string correctly
+        val = str(ids.get(indexer))
+        slug_string = f"{indexer}{val}"
 
-        # Map integer to integer to ensure valid lookups
-        SERIES_ID_MAP[int(medusa_id)] = int(medusa_id)
+        # Map the Sonarr ID to the FULL SLUG STRING
+        SERIES_ID_MAP[int(medusa_id)] = slug_string
         log_debug(f"Mapping Medusa ID {medusa_id} to integer ID {medusa_id}")
         
         # Redefine ID variables for your append block
@@ -442,12 +443,14 @@ async def get_episodes(
     if not SERIES_ID_MAP:
         await core_all_series(api_key)
 
-    # Resolve ID as an integer
-    medusa_id = int(SERIES_ID_MAP.get(target_id, target_id))
+    # Resolve ID
+    # This now returns the full slug string (e.g., 'tvdb1911')
+    medusa_slug = SERIES_ID_MAP.get(target_id, str(target_id))
 
-    # Use the path-based structure with the confirmed integer ID
     try:
-        url_path = f"/api/v2/series/{medusa_id}/episodes"
+        # Medusa needs the slug string here
+        url_path = f"/api/v2/series/{medusa_slug}/episodes"
+        res = await async_client.get(url_path, headers=medusa_headers(api_key))
         res = await async_client.get(
             url_path,
             headers=medusa_headers(api_key)
