@@ -210,7 +210,7 @@ async def core_all_series(api_key: str):
         tmdb_id = ids.get("tmdb")
         imdb_id = ids.get("imdb")
 
-        log_debug(f"Mapping ID {medusa_id} to slug: {slug_string}")
+        log_debug(f"Mapping ID {medusa_id} to internal map")
 
         title = show.get(
             "title",
