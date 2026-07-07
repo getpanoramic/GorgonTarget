@@ -201,17 +201,9 @@ async def core_all_series(api_key: str):
         if not medusa_id:
             medusa_id = idx + 1
 
-        # MANUALLY CONSTRUCT THE SLUG STRING
-        # We ignore the 'slug' key entirely to avoid dictionary injection
-        indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
-        # Force the indexer ID to be a string
-        val = str(ids.get(indexer)) 
-        
-        # Build a raw string: e.g., "tvdb324846"
-        slug_string = f"{indexer}{val}"
-        
-        # FINAL SAFETY: Ensure no dictionary object can ever be in this variable
-        SERIES_ID_MAP[medusa_id] = slug_string
+        # Map integer to integer to ensure valid lookups
+        SERIES_ID_MAP[int(medusa_id)] = int(medusa_id)
+        log_debug(f"Mapping Medusa ID {medusa_id} to integer ID {medusa_id}")
         
         # Redefine ID variables for your append block
         tvdb_id = ids.get("tvdb")
@@ -450,11 +442,10 @@ async def get_episodes(
     if not SERIES_ID_MAP:
         await core_all_series(api_key)
 
-    # Resolve ID
-    medusa_id = SERIES_ID_MAP.get(target_id, target_id)
+    # Resolve ID as an integer
+    medusa_id = int(SERIES_ID_MAP.get(target_id, target_id))
 
-    # Use the path-based structure confirmed by your example URL:
-    # /api/v2/series/{id}/episodes
+    # Use the path-based structure with the confirmed integer ID
     try:
         url_path = f"/api/v2/series/{medusa_id}/episodes"
         res = await async_client.get(
