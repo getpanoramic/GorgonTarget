@@ -544,8 +544,50 @@ async def get_queue_status(api_key: str = Depends(get_medusa_key)):
     return {"unhealthyCount": 0, "unknownCount": 0, "errors": False, "warnings": False}
 
 @app.get("/api/v3/history")
-async def get_history(api_key: str = Depends(get_medusa_key)):
-    return {"page": 1, "pageSize": 100, "sortKey": "date", "sortDirection": "descending", "totalRecords": 0, "records": []}
+async def get_history(
+    page: int = Query(1),
+    pageSize: int = Query(100),
+    sortKey: str = Query("date"),
+    sortDirection: str = Query("descending"),
+    api_key: str = Depends(get_medusa_key)
+):
+    log_debug(f"History requested: page={page}, size={pageSize}, sort={sortKey}")
+    
+    try:
+        # Fetch raw history from Medusa
+        res = await async_client.get("/api/v2/history", headers=medusa_headers(api_key))
+        
+        if res.status_code != 200:
+            log_debug(f"Medusa history returned {res.status_code}: {res.text}")
+            return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
+            
+        data = res.json()
+        log_debug(f"Medusa returned {len(data)} history items.")
+        
+        # Transform data
+        records = []
+        for i, item in enumerate(data):
+            records.append({
+                "id": i + 1,
+                "sourceTitle": item.get("title", "Unknown"),
+                "eventType": item.get("action", "unknown"),
+                "date": item.get("date", "2026-01-01T00:00:00Z"),
+                "seriesId": item.get("seriesId", 0),
+                "episodeId": item.get("episodeId", 0)
+            })
+            
+        log_debug(f"Successfully mapped {len(records)} history records.")
+        
+        return {
+            "page": page, 
+            "pageSize": pageSize, 
+            "totalRecords": len(records), 
+            "records": records
+        }
+        
+    except Exception as e:
+        log_debug(f"Exception during history processing: {str(e)}")
+        return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
 
 # ---------------------------------------------------------------------------
 # 5. HARDWARE AGENTS
