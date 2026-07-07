@@ -111,39 +111,17 @@ def extract_clean_year(show_node: dict) -> int:
 # REUSABLE CORE IMPLEMENTATIONS
 # ---------------------------------------------------------------------------
 async def core_system_status(api_key: str):
-    medusa_version = "3.0.10.1567"
-    os_name = "linux"
-    startup_path = "/app"
-    app_data = "/config"
-    try:
-        config_res = await async_client.get("/api/v2/config", headers=medusa_headers(api_key))
-        if config_res.status_code == 200:
-            medusa_config = config_res.json()
-            main_config = medusa_config.get("main", {}) or medusa_config.get("app", {})
-            if "version" in main_config:
-                medusa_version = main_config.get("version")
-            running_dir = main_config.get("rootDir", main_config.get("dataDir", "/config"))
-            if "\\" in running_dir:
-                os_name = "windows"
-                startup_path = "C:\\Program Files\\Medusa"
-                app_data = running_dir
-            else:
-                startup_path = main_config.get("rootDir", "/app")
-                app_data = main_config.get("dataDir", "/config")
-    except Exception as e:
-        log_debug(f"Exception falling back config properties: {str(e)}")
-
     return {
-        "version": medusa_version,
+        "version": "3.0.10.1567",
         "buildTime": "2026-01-01T00:00:00Z",
         "isDebug": False,
         "isProduction": True,
         "isAdmin": True,
         "isUserInteractive": False,
-        "startupPath": startup_path,
-        "appData": app_data,
-        "osName": os_name,
-        "osVersion": "alpine" if os_name == "linux" else "NT",
+        "startupPath": "/app",
+        "appData": "/config",
+        "osName": "linux",
+        "osVersion": "alpine",
         "isNetCore": True,
         "appName": "Sonarr"
     }
@@ -173,7 +151,6 @@ async def core_all_series(api_key: str):
         title = show.get("title", f"Series {medusa_id}")
         raw_path = show.get("path", "")
         
-        # Fixed f-string backslash issue here
         clean_title = title.replace('/', '_').replace('\\', '_')
         path = f"/tv/{clean_title}" if not raw_path or raw_path == "/tv" else str(raw_path)
 
@@ -205,11 +182,13 @@ async def core_all_series(api_key: str):
 # API ROUTING
 # ---------------------------------------------------------------------------
 @app.get("/api/system/status")
-async def get_system_status_v2(api_key: str = Depends(get_medusa_key)):
+@app.get("/api/v3/system/status")
+async def get_system_status(api_key: str = Depends(get_medusa_key)):
     return await core_system_status(api_key)
 
 @app.get("/api/series")
-async def get_all_series_v2(api_key: str = Depends(get_medusa_key)):
+@app.get("/api/v3/series")
+async def get_all_series(api_key: str = Depends(get_medusa_key)):
     res = await core_all_series(api_key)
     return res if res is not None else JSONResponse(status_code=502, content={"error": "Failed to fetch from Medusa"})
 
@@ -217,18 +196,13 @@ async def get_all_series_v2(api_key: str = Depends(get_medusa_key)):
 async def root_index():
     return {"status": "running", "service": "GorgonTarget Proxy"}
 
-@app.get("/api/v3/system/status")
-async def get_system_status_v3(api_key: str = Depends(get_medusa_key)):
-    return await core_system_status(api_key)
-
 @app.get("/api/v3/diskspace")
 async def get_disk_space(api_key: str = Depends(get_medusa_key)):
     return [{"path": "/tv", "label": "TV Shows", "freeSpace": 500000000000, "totalSpace": 1000000000000}]
 
 @app.get("/api/v3/qualityprofile")
 async def get_quality_profiles(api_key: str = Depends(get_medusa_key)):
-    return [{"id": 1, "name": "Medusa Managed Profile", "upgradeAllowed": False, "cutoff": 1, "items": []},
-            {"id": 2, "name": "HD - 720p/1080p", "upgradeAllowed": False, "cutoff": 2, "items": []}]
+    return [{"id": 1, "name": "Medusa Managed Profile", "upgradeAllowed": False, "cutoff": 1, "items": []}]
 
 @app.get("/api/v3/languageprofile")
 async def get_language_profiles(api_key: str = Depends(get_medusa_key)):
@@ -248,11 +222,6 @@ async def get_tags(api_key: str = Depends(get_medusa_key)): return []
 @app.get("/api/v3/customformat")
 async def get_custom_formats(api_key: str = Depends(get_medusa_key)): return []
 
-@app.get("/api/v3/series")
-async def get_all_series_v3(api_key: str = Depends(get_medusa_key)):
-    res = await core_all_series(api_key)
-    return res if res is not None else JSONResponse(status_code=502, content={"error": "Failed to fetch from Medusa"})
-
 @app.get("/api/v3/series/lookup")
 async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depends(get_medusa_key)):
     if not term: return []
@@ -267,8 +236,6 @@ async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depend
 
 @app.get("/api/v3/series/{series_id}")
 async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_key)):
-    if series_id == 0:
-        return {"id": 0, "title": "Initialization Stub", "tvdbId": 0, "year": 0, "imdbId": "", "images": [], "alternateTitles": [], "genres": [], "seriesType": "standard", "path": "/tv", "monitored": False, "added": "2026-01-01T00:00:00Z"}
     try:
         res = await async_client.get(f"/api/v2/series/{series_id}", headers=medusa_headers(api_key))
         if res.status_code != 200: raise HTTPException(status_code=404, detail="Series not found")
@@ -339,16 +306,33 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
     except Exception: return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
 
 @app.get("/api/v3/queue")
-async def get_queue(api_key: str = Depends(get_medusa_key)):
-    return {"page": 1, "pageSize": 20, "sortKey": "id", "sortDirection": "descending", "totalRecords": 0, "records": []}
+async def get_queue(page: int = Query(1), pageSize: int = Query(20), api_key: str = Depends(get_medusa_key)):
+    try:
+        res = await async_client.get("/api/v2/history", headers=medusa_headers(api_key))
+        if res.status_code == 200:
+            data = res.json()
+            # Filter for active items if Medusa indicates them
+            active = [item for item in data if item.get("action") == "snatched"]
+            return {"page": page, "pageSize": pageSize, "totalRecords": len(active), "records": active}
+    except Exception: pass
+    return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
 
 @app.get("/api/v3/queue/status")
 async def get_queue_status(api_key: str = Depends(get_medusa_key)):
     return {"unhealthyCount": 0, "unknownCount": 0, "errors": False, "warnings": False}
 
 @app.get("/api/v3/history")
-async def get_history(api_key: str = Depends(get_medusa_key)):
-    return {"page": 1, "pageSize": 100, "sortKey": "date", "sortDirection": "descending", "totalRecords": 0, "records": []}
+async def get_history(page: int = Query(1), pageSize: int = Query(100), api_key: str = Depends(get_medusa_key)):
+    try:
+        res = await async_client.get("/api/v2/history", headers=medusa_headers(api_key))
+        if res.status_code == 200:
+            data = res.json()
+            records = [{"id": i, "sourceTitle": item.get("title", "Unknown"), "eventType": item.get("action", "unknown"),
+                        "date": item.get("date", "2026-01-01T00:00:00Z")} for i, item in enumerate(data)]
+            return {"page": page, "pageSize": pageSize, "totalRecords": len(records), "records": records}
+    except Exception as e:
+        log_debug(f"History fetch error: {str(e)}")
+    return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
 
 @app.get("/api/v3/downloadclient")
 async def get_download_clients(api_key: str = Depends(get_medusa_key)): return []
