@@ -431,26 +431,41 @@ async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa
         return JSONResponse(status_code=502, content={"error": str(e)})
 
 @app.get("/api/v3/episode")
-async def get_episodes(...):
+async def get_episodes(
+    seriesId: Optional[int] = Query(None),
+    seriesid: Optional[int] = Query(None),
+    includeEpisodeFile: bool = Query(False),
+    api_key: str = Depends(get_medusa_key)
+):
     target_id = seriesId or seriesid
-    if not target_id: return []
-    if not SERIES_ID_MAP: await core_all_series(api_key)
+    log_debug(f"Episode fetch requested for seriesId: {target_id}")
+    
+    if not target_id:
+        log_debug("No seriesId provided, returning empty list.")
+        return []
 
-    # Resolve the slug string (e.g., 'tvdb1911')
-    medusa_slug = SERIES_ID_MAP.get(target_id, str(target_id))
+    if not SERIES_ID_MAP:
+        log_debug("SERIES_ID_MAP is empty, triggering core_all_series refresh.")
+        await core_all_series(api_key)
+
+    # Resolve ID
+    medusa_id = SERIES_ID_MAP.get(target_id, target_id)
+    log_debug(f"Resolved Sonarr ID {target_id} to Medusa ID/Slug: {medusa_id}")
 
     try:
-        # Use the string SLUG in the path
-        url_path = f"/api/v2/series/{medusa_slug}/episodes"
+        url_path = f"/api/v2/series/{medusa_id}/episodes"
+        log_debug(f"Querying Medusa: {url_path}")
+        
         res = await async_client.get(url_path, headers=medusa_headers(api_key))
         
         if res.status_code != 200:
-            log_debug(f"Medusa returned {res.status_code} for {url_path}. Server response: {res.text}")
+            log_debug(f"Medusa returned {res.status_code}. Response: {res.text}")
             return []
 
         medusa_eps = res.json()
+        log_debug(f"Medusa returned {len(medusa_eps)} episodes for {medusa_id}")
+        
         translated_episodes = []
-
         for ep in medusa_eps:
             status = str(ep.get("status", "")).lower()
             has_file = status in ["downloaded", "snatched"]
