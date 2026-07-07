@@ -196,15 +196,24 @@ async def core_all_series(api_key: str):
     for idx, show in enumerate(medusa_shows):
         ids = show.get("ids", {})
         medusa_id = extract_clean_integer_id(show)
+        
+        # 1. Determine indexer
         indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
         
-        # Build the slug string correctly
-        val = str(ids.get(indexer))
-        slug_string = f"{indexer}{val}"
-
-        # Map the Sonarr ID to the FULL SLUG STRING
+        # 2. Get the value, fallback to 'tvdb' or 'tmdb' if the primary indexer ID is missing
+        val = ids.get(indexer) or ids.get("tvdb") or ids.get("tmdb")
+        
+        # 3. Create the slug string only if we have a valid value
+        if val:
+            slug_string = f"{indexer}{val}"
+        else:
+            # Absolute fallback: use the medusa_id as a string
+            slug_string = str(medusa_id)
+        
+        # 4. Map it
         SERIES_ID_MAP[int(medusa_id)] = slug_string
-        log_debug(f"Mapping Medusa ID {medusa_id} to integer ID {medusa_id}")
+        
+        log_debug(f"Mapping Medusa ID {medusa_id} to slug: {slug_string}")
         
         # Redefine ID variables for your append block
         tvdb_id = ids.get("tvdb")
