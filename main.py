@@ -70,37 +70,66 @@ async def startup_event():
 # ---------------------------------------------------------------------------
 # DYNAMIC AUTHENTICATION HELPER
 # ---------------------------------------------------------------------------
-def get_medusa_key(
+async def get_medusa_key(
     x_api_key: Optional[str] = Header(None),
     apikey: Optional[str] = Query(None),
     api_key: Optional[str] = Query(None)
 ) -> str:
     resolved_key = x_api_key or apikey or api_key
+    
     if not resolved_key:
         log_debug("Authentication rejected: Missing API key context.")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
             detail="Missing API Key parameter or X-Api-Key header from Sonarr client."
         )
+    
+    # Trigger lazy version check now that we have the key
+    await get_medusa_version_lazy(resolved_key)
+    
     return resolved_key
 
 def medusa_headers(api_key: str) -> dict:
     return {"x-api-key": api_key, "Content-Type": "application/json"}
 
-async def detect_medusa_version(api_key: str):
-    # Most forks support the 'server.info' command
-    url = f"/?cmd=server.info"
+# Global variables
+DETECTED_MEDUSA_VERSION = None
+CHECK_IN_PROGRESS = False
+
+async def get_medusa_version_lazy(api_key: str):
+    global DETECTED_MEDUSA_VERSION, CHECK_IN_PROGRESS
+    
+    # 1. Early exit if already completed
+    if DETECTED_MEDUSA_VERSION is not None:
+        return DETECTED_MEDUSA_VERSION
+        
+    # 2. Prevent concurrent checks
+    if CHECK_IN_PROGRESS:
+        log_debug("Detection already in progress, waiting for result...")
+        return "Unknown"
+
+    CHECK_IN_PROGRESS = True
+    log_debug("First API hit: Starting lazy Medusa version detection.")
+    
     try:
-        res = await async_client.get(url, headers=medusa_headers(api_key))
-        if res.status_code == 200:
-            data = res.json()
-            # Log the version info to help us debug
-            version_info = data.get("data", {})
-            log_debug(f"Detected Medusa version: {version_info.get('version', 'Unknown')}")
-            return version_info
+        # 3. Perform detection
+        version = await detect_medusa_version(api_key)
+        
+        if version:
+            DETECTED_MEDUSA_VERSION = version
+            log_debug(f"SUCCESS: Medusa version detected as: {DETECTED_MEDUSA_VERSION}")
+        else:
+            DETECTED_MEDUSA_VERSION = "Unknown"
+            log_debug("WARNING: Version detection failed (empty response). Defaulting to 'Unknown'.")
+            
     except Exception as e:
-        log_debug(f"Could not verify Medusa version: {e}")
-    return None
+        DETECTED_MEDUSA_VERSION = "Unknown"
+        log_debug(f"ERROR: Exception during version detection: {str(e)}")
+        
+    finally:
+        CHECK_IN_PROGRESS = False
+        
+    return DETECTED_MEDUSA_VERSION
 
 # ---------------------------------------------------------------------------
 # REQUEST MODELS
