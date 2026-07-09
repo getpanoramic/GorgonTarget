@@ -554,8 +554,12 @@ async def get_queue(
 
 @app.get("/api/v3/queue/status")
 async def get_queue_status(api_key: str = Depends(get_medusa_key)):
-    # Explicitly including these fields to ensure parity with Sonarr V3
+    # This structure is what Sonarr V3 expects to stop the loading icon
     return {
+        "totalCount": 0,
+        "count": 0,
+        "pageSize": 20,
+        "sortKey": "timeleft",
         "unknownQueueItems": 0,
         "queued": 0,
         "downloading": 0,
@@ -588,13 +592,17 @@ async def get_history(
         # Transform data
         records = []
         for i, item in enumerate(data):
+            # Check what's actually in 'item' by logging it once
+            # log_debug(f"DEBUGGING ITEM: {item}") 
+            
             records.append({
                 "id": i + 1,
-                "sourceTitle": item.get("title", "Unknown"),
-                "eventType": item.get("action", "unknown"),
-                "date": item.get("date", "2026-01-01T00:00:00Z"),
-                "seriesId": item.get("seriesId", 0),
-                "episodeId": item.get("episodeId", 0)
+                # Try accessing the fields differently if these are missing
+                "sourceTitle": item.get("show_name") or item.get("title", "Unknown"),
+                "eventType": item.get("action") or item.get("event", "unknown"),
+                "date": item.get("date") or "2026-07-09T12:00:00Z",
+                "seriesId": int(item.get("series_id") or item.get("seriesId") or 0),
+                "episodeId": int(item.get("episode_id") or item.get("episodeId") or 0)
             })
             
         log_debug(f"Successfully mapped {len(records)} history records.")
