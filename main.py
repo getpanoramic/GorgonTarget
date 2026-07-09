@@ -82,6 +82,17 @@ async def get_medusa_key(
 def medusa_headers(api_key: str) -> dict:
     return {"x-api-key": api_key, "Content-Type": "application/json"}
 
+async def detect_medusa_version(api_key: str):
+    url = "/api/v2/?cmd=server.info"
+    try:
+        res = await async_client.get(url, headers=medusa_headers(api_key))
+        if res.status_code == 200:
+            data = res.json()
+            return data.get("data", {}).get("version", "Unknown")
+    except Exception as e:
+        log_debug(f"Version detection failed: {e}")
+    return "Unknown"
+
 # Global variables
 DETECTED_MEDUSA_VERSION = None
 CHECK_IN_PROGRESS = False
