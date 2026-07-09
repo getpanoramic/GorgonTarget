@@ -536,12 +536,33 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
         return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
 
 @app.get("/api/v3/queue")
-async def get_queue(api_key: str = Depends(get_medusa_key)):
-    return {"page": 1, "pageSize": 20, "sortKey": "id", "sortDirection": "descending", "totalRecords": 0, "records": []}
+async def get_queue(
+    page: int = Query(1),
+    pageSize: int = Query(20),
+    sortKey: str = Query("id"),
+    api_key: str = Depends(get_medusa_key)
+):
+    log_debug(f"Queue requested: page={page}, size={pageSize}")
+    # Return a basic structure that indicates no active downloads, 
+    # which stops the app from waiting for more pages.
+    return {
+        "page": page,
+        "pageSize": pageSize,
+        "totalRecords": 0,
+        "records": []
+    }
 
 @app.get("/api/v3/queue/status")
 async def get_queue_status(api_key: str = Depends(get_medusa_key)):
-    return {"unhealthyCount": 0, "unknownCount": 0, "errors": False, "warnings": False}
+    # Explicitly including these fields to ensure parity with Sonarr V3
+    return {
+        "unknownQueueItems": 0,
+        "queued": 0,
+        "downloading": 0,
+        "failed": 0,
+        "errors": False,
+        "warnings": False
+    }
 
 @app.get("/api/v3/history")
 async def get_history(
@@ -577,13 +598,13 @@ async def get_history(
             })
             
         log_debug(f"Successfully mapped {len(records)} history records.")
+     
+        # --- ADD THESE TWO LINES HERE ---
+        response_data = {"page": page, "pageSize": pageSize, "totalRecords": len(records), "records": records}
+        log_debug(f"Returning history records: {response_data}")
+        # --------------------------------
         
-        return {
-            "page": page, 
-            "pageSize": pageSize, 
-            "totalRecords": len(records), 
-            "records": records
-        }
+        return response_data
         
     except Exception as e:
         log_debug(f"Exception during history processing: {str(e)}")
