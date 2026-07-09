@@ -339,12 +339,34 @@ async def get_tags(api_key: str = Depends(get_medusa_key)):
 async def get_custom_formats(api_key: str = Depends(get_medusa_key)): 
     return []
 
-@app.get("/api/v3/series")
-async def get_all_series_v3(api_key: str = Depends(get_medusa_key)):
+@app.post("/api/v3/series")
+async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa_key)):
+    # 1. Map to Medusa format
+    medusa_payload = {
+        "config": {"location": f"{payload.rootFolderPath}", "qualities": [], "paused": not payload.monitored},
+        "ids": {"tvdb": payload.tvdbId},
+        "selectedIndexer": "tvdb"
+    }
     try:
-        return await core_all_series(api_key)
+        res = await async_client.post("/api/v2/series", json=medusa_payload, headers=medusa_headers(api_key))
+        if res.status_code in [200, 201]:
+            new_show = res.json()
+            # 2. Extract the actual Medusa ID
+            clean_id = extract_clean_integer_id(new_show)
+            
+            # 3. Add to the ID map immediately so subsequent lookups don't 404
+            SERIES_ID_MAP[clean_id] = f"tvdb{payload.tvdbId}"
+            
+            return {
+                "id": int(clean_id),
+                "title": payload.title,
+                "tvdbId": payload.tvdbId,
+                "path": payload.rootFolderPath,
+                "monitored": payload.monitored,
+                "added": "2026-01-01T00:00:00Z",
+            }
+        return JSONResponse(status_code=res.status_code, content=res.json())
     except Exception as e:
-        log_debug(f"Exception handling processing global show lists: {str(e)}")
         return JSONResponse(status_code=502, content={"error": str(e)})
 
 @app.get("/api/v3/series/lookup")
@@ -508,7 +530,7 @@ async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: 
         res = await async_client.get("/api/v2/schedule", headers=medusa_headers(api_key))
         if res.status_code != 200: return []
         
-        data = res.json().get("coming", [])
+        # Ensure we return a full object with 'series' metadata
         return [{
             "id": int(item.get("id", 0)),
             "seriesId": int(item.get("seriesId", 0)),
@@ -516,12 +538,9 @@ async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: 
             "seasonNumber": item.get("season"),
             "title": item.get("title"),
             "airDateUtc": item.get("airDate"),
-            "series": { # nzb360 needs this to render the series title
-                "title": item.get("show_name", "Unknown Series")
-            }
-        } for item in data]
-    except Exception as e:
-        log_debug(f"Calendar error: {e}")
+            "series": {"title": item.get("show_name", "Unknown")}
+        } for item in res.json().get("coming", [])]
+    except Exception:
         return []
 
 @app.get("/api/v3/wanted/missing")
@@ -531,30 +550,21 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
         if res.status_code != 200: return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
         
         data = res.json()
-        # Combine missed and coming (Medusa puts missing/past episodes in 'missed')
         combined = data.get("missed", []) + data.get("coming", [])
         
         records = [{
-            "id": int(item.get("id", i + 1000)),
+            "id": int(item.get("id", idx + 1000)),
             "seriesId": int(item.get("seriesId", 0)),
             "episodeNumber": item.get("episode"),
             "seasonNumber": item.get("season"),
             "title": item.get("title"),
             "airDateUtc": item.get("airDate"),
-            "series": {
-                "title": item.get("show_name", "Unknown Series")
-            },
+            "series": {"title": item.get("show_name", "Unknown")},
             "monitored": True
-        } for i, item in enumerate(combined)]
+        } for idx, item in enumerate(combined)]
         
-        return {
-            "page": 1, 
-            "pageSize": len(records) or 20, 
-            "totalRecords": len(records), 
-            "records": records
-        }
-    except Exception as e:
-        log_debug(f"Missing error: {e}")
+        return {"page": 1, "pageSize": len(records) or 20, "totalRecords": len(records), "records": records}
+    except Exception:
         return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
 
 @app.get("/api/v3/queue")
