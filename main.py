@@ -8,6 +8,16 @@ from pydantic import BaseModel
 from starlette.types import ASGIApp, Scope, Receive, Send
 import httpx
 
+@app.on_event("startup")
+async def startup_event():
+    log_debug("Proxy starting up... checking Medusa version.")
+    # Assuming you have a way to get your API key here
+    # You might need to use a default or handle the key fetching
+    version = await detect_medusa_version(YOUR_DEFAULT_API_KEY)
+    # You can store this in a global variable to use in add_series
+    global DETECTED_MEDUSA_VERSION
+    DETECTED_MEDUSA_VERSION = version
+
 # ---------------------------------------------------------------------------
 # ADVANCED PATH & CASE-INSENSITIVE ROUTING MIDDLEWARE (WITH UA LOGGING)
 # ---------------------------------------------------------------------------
@@ -76,6 +86,21 @@ def get_medusa_key(
 
 def medusa_headers(api_key: str) -> dict:
     return {"x-api-key": api_key, "Content-Type": "application/json"}
+
+async def detect_medusa_version(api_key: str):
+    # Most forks support the 'server.info' command
+    url = f"/?cmd=server.info"
+    try:
+        res = await async_client.get(url, headers=medusa_headers(api_key))
+        if res.status_code == 200:
+            data = res.json()
+            # Log the version info to help us debug
+            version_info = data.get("data", {})
+            log_debug(f"Detected Medusa version: {version_info.get('version', 'Unknown')}")
+            return version_info
+    except Exception as e:
+        log_debug(f"Could not verify Medusa version: {e}")
+    return None
 
 # ---------------------------------------------------------------------------
 # REQUEST MODELS
@@ -341,39 +366,45 @@ async def get_custom_formats(api_key: str = Depends(get_medusa_key)):
 
 @app.post("/api/v3/series")
 async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa_key)):
-    medusa_payload = {
-        "config": {"location": f"{payload.rootFolderPath}/{payload.title}", "qualities": [], "paused": not payload.monitored},
-        "ids": {"tvdb": payload.tvdbId},
-        "selectedIndexer": "tvdb"
+    # Medusa PVR expects 'cmd' in the query parameters
+    params = {
+        "cmd": "series.addnew",
+        "indexer": 1,           # 1 = TheTVDB
+        "indexerid": payload.tvdbId,
+        "location": payload.rootFolderPath,
     }
+    
+    log_debug(f"Calling Medusa API with params: {params}")
+    
     try:
-        res = await async_client.post("/api/v2/series", json=medusa_payload, headers=medusa_headers(api_key))
-        if res.status_code in [200, 201]:
-            new_show = res.json()
-            clean_id = extract_clean_integer_id(new_show)
-            
-            # --- FIX: Update the internal map ---
-            SERIES_ID_MAP[int(clean_id)] = f"tvdb{payload.tvdbId}"
-            log_debug(f"Added new series {payload.title} to map with ID: {clean_id}")
-            # -----------------------------------
-            
-            return {
-                "id": int(clean_id),
-                "title": payload.title,
-                "tvdbId": payload.tvdbId,
-                "imdbId": "",
-                "year": 0,
-                "images": [],
-                "alternateTitles": [],
-                "genres": [],
-                "seriesType": "standard",
-                "path": medusa_payload["config"]["location"],
-                "monitored": payload.monitored,
-                "profileId": payload.profileId,
-                "added": "2026-01-01T00:00:00Z",
-            }
-        return JSONResponse(status_code=res.status_code, content=res.json())
+        # Note the usage of 'params' and the correct API path for Pymedusa
+        # The structure is typically /api/v2/<api_key>/
+        res = await async_client.get(f"/api/v2/{api_key}/", params=params, headers=medusa_headers(api_key))
+        
+        log_debug(f"Medusa Response: {res.status_code} - {res.text}")
+        
+        if res.status_code == 200:
+            data = res.json()
+            # Check if Medusa actually succeeded
+            if data.get("result") == "success":
+                # Register the new ID in your map so future lookups succeed
+                clean_id = int(payload.tvdbId) # Using TVDB ID as a fallback for internal mapping
+                SERIES_ID_MAP[clean_id] = f"tvdb{payload.tvdbId}"
+                
+                return {
+                    "id": clean_id,
+                    "title": payload.title,
+                    "tvdbId": payload.tvdbId,
+                    "path": payload.rootFolderPath,
+                    "monitored": payload.monitored,
+                }
+            else:
+                return JSONResponse(status_code=400, content={"error": "Medusa result fail", "details": data.get("message")})
+        
+        return JSONResponse(status_code=res.status_code, content={"error": "Medusa request failed"})
+        
     except Exception as e:
+        log_debug(f"Exception in add_series: {e}")
         return JSONResponse(status_code=502, content={"error": str(e)})
 
 @app.get("/api/v3/series/lookup")
