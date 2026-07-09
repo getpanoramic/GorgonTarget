@@ -8,16 +8,6 @@ from pydantic import BaseModel
 from starlette.types import ASGIApp, Scope, Receive, Send
 import httpx
 
-@app.on_event("startup")
-async def startup_event():
-    log_debug("Proxy starting up... checking Medusa version.")
-    # Assuming you have a way to get your API key here
-    # You might need to use a default or handle the key fetching
-    version = await detect_medusa_version(YOUR_DEFAULT_API_KEY)
-    # You can store this in a global variable to use in add_series
-    global DETECTED_MEDUSA_VERSION
-    DETECTED_MEDUSA_VERSION = version
-
 # ---------------------------------------------------------------------------
 # ADVANCED PATH & CASE-INSENSITIVE ROUTING MIDDLEWARE (WITH UA LOGGING)
 # ---------------------------------------------------------------------------
@@ -66,6 +56,16 @@ async_client = httpx.AsyncClient(
 
 def log_debug(message: str):
     print(f"[GorgonTarget DEBUG] {message}", file=sys.stderr, flush=True)
+
+@app.on_event("startup")
+async def startup_event():
+    log_debug("Proxy starting up... checking Medusa version.")
+    # Assuming you have a way to get your API key here
+    # You might need to use a default or handle the key fetching
+    version = await detect_medusa_version(YOUR_DEFAULT_API_KEY)
+    # You can store this in a global variable to use in add_series
+    global DETECTED_MEDUSA_VERSION
+    DETECTED_MEDUSA_VERSION = version
 
 # ---------------------------------------------------------------------------
 # DYNAMIC AUTHENTICATION HELPER
