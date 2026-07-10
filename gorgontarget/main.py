@@ -1,13 +1,17 @@
+import os
+import urllib.parse
 import sys
 import json
-from typing import Optional, List
-from fastapi import FastAPI, Header, HTTPException, Query, Depends, Request
+from typing import List, Optional, Dict, Any
+from fastapi import FastAPI, Header, HTTPException, Query, status, Depends
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 from starlette.types import ASGIApp, Scope, Receive, Send
-from .settings import settings
-from .client import MedusaClient
-from .translator import MedusaTranslator
-from .models import SonarrAddSeries, SonarrCommand, SonarrSeries, SonarrEpisode, SonarrSystemStatus
+import httpx
 
+# ---------------------------------------------------------------------------
+# REFINED PATH & CASE-INSENSITIVE ROUTING MIDDLEWARE (CLEAN LOGS)
+# ---------------------------------------------------------------------------
 class CaseInsensitiveAPIMiddleware:
     def __init__(self, app: ASGIApp):
         self.app = app
@@ -17,208 +21,480 @@ class CaseInsensitiveAPIMiddleware:
             path = scope.get("path", "")
             method = scope.get("method", "UNKNOWN")
             
-            # Extract headers safely for diagnostic reporting
-            headers = dict(scope.get("headers", []))
-            decoded_headers = {}
-            for k, v in headers.items():
-                try:
-                    decoded_headers[k.decode("utf-8").lower()] = v.decode("utf-8")
-                except Exception:
-                    pass
+            # Print simplified request line instead of heavy header dumps
+            print(f"[GorgonTarget] {method} {path}", file=sys.stderr, flush=True)
             
-            # Extract the user agent
-            ua = decoded_headers.get("user-agent", "Unknown Agent")
-            
-            # Print detailed request metrics to console
-            print(f"\n[GorgonTarget DEBUG] {method} -> {path}", file=sys.stderr, flush=True)
-            print(f"[GorgonTarget DEBUG] User-Agent: {ua}", file=sys.stderr, flush=True)
-            if decoded_headers:
-                print(f"[GorgonTarget DEBUG] Headers: {json.dumps(decoded_headers)}", file=sys.stderr, flush=True)
-
-            # Route sanitization
             if path.endswith("/") and len(path) > 1:
                 path = path.rstrip("/")
+                
             if path.startswith("/api"):
                 scope["path"] = path.lower()
-                
+            else:
+                scope["path"] = path
+
         await self.app(scope, receive, send)
 
-app = FastAPI(title=settings.app_name, version=settings.version)
+# ---------------------------------------------------------------------------
+# APP INITIALIZATION
+# ---------------------------------------------------------------------------
+app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.6.0")
 app.add_middleware(CaseInsensitiveAPIMiddleware)
 
-async def get_client(
+MEDUSA_URL = os.getenv("MEDUSA_URL", "http://localhost:8081")
+async_client = httpx.AsyncClient(base_url=MEDUSA_URL, timeout=30.0)
+
+# Maps Sonarr proxy IDs -> real Medusa IDs
+SERIES_ID_MAP = {}
+
+def log_debug(message: str):
+    print(f"[GorgonTarget DEBUG] {message}", file=sys.stderr, flush=True)
+
+# Helper function to generate standard image links for Sonarr clients
+def build_sonarr_images(series_id: int) -> List[Dict[str, str]]:
+    return [
+        {"coverType": "poster", "url": f"/api/v3/mediacover/{series_id}/poster.jpg"},
+        {"coverType": "banner", "url": f"/api/v3/mediacover/{series_id}/banner.jpg"},
+        {"coverType": "fanart", "url": f"/api/v3/mediacover/{series_id}/fanart.jpg"}
+    ]
+
+# ---------------------------------------------------------------------------
+# DYNAMIC AUTHENTICATION HELPER
+# ---------------------------------------------------------------------------
+async def get_medusa_key(
     x_api_key: Optional[str] = Header(None),
     apikey: Optional[str] = Query(None),
     api_key: Optional[str] = Query(None)
-) -> MedusaClient:
-    key = x_api_key or apikey or api_key
-    if not key:
-        raise HTTPException(status_code=401, detail="Missing API Key context.")
+) -> str:
+    resolved_key = x_api_key or apikey or api_key
+    if not resolved_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Missing API Key context."
+        )
+    return resolved_key
+
+def medusa_headers(api_key: str) -> dict:
+    return {"x-api-key": api_key, "Content-Type": "application/json"}
+
+# ---------------------------------------------------------------------------
+# ID & VALUE CONVERSION SAFETY FUNCTIONS
+# ---------------------------------------------------------------------------
+def extract_clean_integer_id(show_node: dict) -> int:
+    raw_id = show_node.get("id")
+    if isinstance(raw_id, dict):
+        raw_id = raw_id.get("medusa") or raw_id.get("tvdb") or raw_id.get("tmdb")
+    try:
+        return int(raw_id)
+    except (ValueError, TypeError):
+        return 0
+
+def extract_clean_year(show_node: dict) -> int:
+    raw_year = show_node.get("year") or show_node.get("startYear")
+    if isinstance(raw_year, dict):
+        raw_year = raw_year.get("year") or raw_year.get("value") or list(raw_year.values())[0]
+    try:
+        if raw_year is not None:
+            return int(raw_year)
+    except (ValueError, TypeError):
+        pass
+    return 0
+
+# ---------------------------------------------------------------------------
+# CORE REUSABLE IMPLEMENTATIONS
+# ---------------------------------------------------------------------------
+async def core_system_status(api_key: str):
+    medusa_version = "3.0.10.1567"
+    os_name = "linux"
+    startup_path = "/app"
+    app_data = "/config"
     
-    client = MedusaClient(key)
-    await client.detect_capabilities()
-    return client
+    try:
+        config_res = await async_client.get("/api/v2/config", headers=medusa_headers(api_key))
+        if config_res.status_code == 200:
+            medusa_config = config_res.json()
+            main_config = medusa_config.get("main", {}) or medusa_config.get("app", {})
+            if "version" in main_config:
+                medusa_version = main_config.get("version")
+            running_dir = main_config.get("rootDir", main_config.get("dataDir", "/config"))
+            if "\\" in running_dir:
+                os_name = "windows"
+                startup_path = "C:\\Program Files\\Medusa"
+                app_data = running_dir
+            else:
+                startup_path = main_config.get("rootDir", "/app")
+                app_data = main_config.get("dataDir", "/config")
+    except Exception as e:
+        log_debug(f"Config fallback exception: {str(e)}")
 
-# --- CORE INTEGRATION ENDPOINTS ---
+    return {
+        "version": medusa_version,
+        "startupPath": startup_path,
+        "appData": app_data,
+        "osName": os_name,
+        "osVersion": "alpine" if os_name == "linux" else "NT",
+        "isNetCore": True,
+        "appName": "Sonarr"
+    }
 
+async def core_all_series(api_key: str):
+    res = await async_client.get("/api/v2/series", params={"limit": 1000}, headers=medusa_headers(api_key))
+    if res.status_code != 200:
+        return JSONResponse(status_code=res.status_code, content=res.json())
+
+    medusa_shows = res.json()
+    sonarr_shows = []
+    SERIES_ID_MAP.clear()
+
+    for show in medusa_shows:
+        ids = show.get("ids", {})
+        medusa_id = extract_clean_integer_id(show)
+        
+        indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
+        val = ids.get(indexer) or ids.get("tvdb") or ids.get("tmdb")
+        slug_string = f"{indexer}{val}" if val else str(medusa_id)
+        
+        SERIES_ID_MAP[int(medusa_id)] = slug_string
+        
+        title = show.get("title", f"Series {medusa_id}")
+        raw_path = show.get("path", "")
+        path = str(raw_path) if raw_path and raw_path != "/tv" else f"/tv/{title.replace('/', '_').replace('\\', '_')}"
+
+        sonarr_shows.append({
+            "id": int(medusa_id),
+            "tvdbId": int(ids.get("tvdb")) if ids.get("tvdb") else 0,
+            "tmdbId": int(ids.get("tmdb")) if ids.get("tmdb") else 0,
+            "imdbId": ids.get("imdb") or "",
+            "title": title,
+            "sortTitle": title.lower(),
+            "status": "continuing" if show.get("status") == "continuing" else "ended",
+            "overview": show.get("overview", ""),
+            "year": extract_clean_year(show),
+            "images": build_sonarr_images(int(medusa_id)),
+            "alternateTitles": [],
+            "genres": [],
+            "seriesType": "standard",
+            "path": path,
+            "profileId": 1,
+            "languageProfileId": 1,
+            "monitored": not show.get("paused", False),
+            "useSceneNumbering": False,
+            "added": "2026-01-01T00:00:00Z",
+            "seasons": []
+        })
+
+    log_debug(f"OUTBOUND DATASET: Sent {len(sonarr_shows)} series objects with full image specifications.")
+    return sonarr_shows
+
+# ---------------------------------------------------------------------------
+# MEDIA COVER ASSET PROXY TUNNEL
+# ---------------------------------------------------------------------------
+@app.get("/api/v3/mediacover/{series_id}/{asset_file}")
+async def get_media_cover(series_id: str, asset_file: str, api_key: str = Depends(get_medusa_key)):
+    """
+    Catches image proxy requests from Prismarr, resolves their asset targets, 
+    and fetches the raw byte content dynamically from Medusa.
+    """
+    asset_lower = asset_file.lower()
+    medusa_asset_type = "poster"
+    if "banner" in asset_lower:
+        medusa_asset_type = "banner"
+    elif "fanart" in asset_lower:
+        medusa_asset_type = "fanart"
+
+    target_url = f"/api/v2/series/{series_id}/images/{medusa_asset_type}"
+    log_debug(f"Proxying visual cover asset: {medusa_asset_type} for series {series_id}")
+    
+    try:
+        response = await async_client.get(target_url, headers=medusa_headers(api_key))
+        if response.status_code == 200:
+            return StreamingResponse(
+                response.iter_bytes(), 
+                media_type=response.headers.get("content-type", "image/jpeg")
+            )
+    except Exception as e:
+        log_debug(f"Failed to pull image proxy: {str(e)}")
+        
+    transparent_pixel = b'\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff\x21\xf9\x04\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b'
+    return StreamingResponse(iter([transparent_pixel]), media_type="image/gif")
+
+# ---------------------------------------------------------------------------
+# CORE ROUTING ENDPOINTS
+# ---------------------------------------------------------------------------
 @app.get("/")
 async def root_index():
-    return {"status": "running", "service": settings.app_name}
+    return {"status": "running", "service": "GorgonTarget Proxy"}
 
-@app.get("/api/system/status", response_model=SonarrSystemStatus)
-@app.get("/api/v3/system/status", response_model=SonarrSystemStatus)
-async def get_system_status(client: MedusaClient = Depends(get_client)):
-    config = await client.get_system_config()
-    main_cfg = config.get("main", {}) or config.get("app", {})
-    return SonarrSystemStatus(
-        version=main_cfg.get("version", "3.0.10.1567"),
-        startupPath=main_cfg.get("rootDir", "/app"),
-        appData=main_cfg.get("dataDir", "/config"),
-        osName="windows" if "\\" in main_cfg.get("rootDir", "") else "linux",
-        osVersion="NT" if "\\" in main_cfg.get("rootDir", "") else "alpine"
-    )
+@app.get("/api/system/status")
+async def get_system_status_v2(api_key: str = Depends(get_medusa_key)):
+    return await core_system_status(api_key)
 
-@app.get("/api/v3/series", response_model=List[SonarrSeries])
-async def get_series(client: MedusaClient = Depends(get_client)):
-    medusa_shows = await client.get_all_series()
-    return [MedusaTranslator.to_sonarr_series(show) for show in medusa_shows]
+@app.get("/api/series")
+async def get_all_series_v2(api_key: str = Depends(get_medusa_key)):
+    return await core_all_series(api_key)
 
-@app.get("/api/v3/series/{series_id}", response_model=SonarrSeries)
-async def get_single_series(series_id: int, client: MedusaClient = Depends(get_client)):
-    # Diagnostic print to check lookup values directly
-    print(f"[GorgonTarget] Fetching explicit profile context for Series ID: {series_id}", file=sys.stderr, flush=True)
-    
-    show = await client.get_series_by_id(series_id)
-    if not show:
-        # Fallback Strategy: If an exact lookup by string mapping fails, search list collections
-        all_shows = await client.get_all_series()
-        for s in all_shows:
-            # Check matching variations against TVDB markers
-            tvdb_obj = s.get("id", {}) or s.get("ids", {})
-            if str(tvdb_obj.get("tvdb")) == str(series_id) or str(s.get("indexerId")) == str(series_id):
-                return MedusaTranslator.to_sonarr_series(s)
-        
-        # If absolutely missing, stub a fallback response using the requested ID to avoid blocking UI rendering
-        return SonarrSeries(
-            id=series_id,
-            title=f"Medusa Show {series_id}",
-            tvdbId=series_id,
-            path=f"/tv/Show_{series_id}",
-            monitored=True
-        )
-    return MedusaTranslator.to_sonarr_series(show)
+@app.get("/api/v3/system/status")
+async def get_system_status_v3(api_key: str = Depends(get_medusa_key)):
+    return await core_system_status(api_key)
 
-@app.post("/api/v3/series", response_model=SonarrSeries)
-async def add_series(payload: SonarrAddSeries, client: MedusaClient = Depends(get_client)):
-    print(f"[GorgonTarget] Intercepted Add Series Payload: {payload.model_dump_json()}", file=sys.stderr, flush=True)
-    result = await client.add_series(
-        payload.tvdbId, payload.rootFolderPath, payload.title, payload.monitored
-    )
-    if not result:
-        raise HTTPException(status_code=502, detail="Failed to add series to Medusa")
-    
-    return SonarrSeries(
-        id=int(payload.tvdbId),
-        title=payload.title,
-        tvdbId=payload.tvdbId,
-        path=payload.rootFolderPath,
-        monitored=payload.monitored
-    )
+@app.get("/api/v3/diskspace")
+async def get_disk_space(api_key: str = Depends(get_medusa_key)):
+    return [{"path": "/tv", "label": "TV Shows", "freeSpace": 500000000000, "totalSpace": 1000000000000}]
 
-@app.get("/api/v3/episode", response_model=List[SonarrEpisode])
+@app.get("/api/v3/qualityprofile")
+async def get_quality_profiles(api_key: str = Depends(get_medusa_key)):
+    return [
+        {"id": 1, "name": "Medusa Managed Profile", "upgradeAllowed": False, "cutoff": 1, "items": []},
+        {"id": 2, "name": "HD - 720p/1080p", "upgradeAllowed": False, "cutoff": 2, "items": []}
+    ]
+
+@app.get("/api/v3/languageprofile")
+async def get_language_profiles(api_key: str = Depends(get_medusa_key)):
+    return [{"id": 1, "name": "English", "cutoff": {"id": 1, "name": "English"}, "languages": [{"language": {"id": 1, "name": "English"}, "allowed": True}]}]
+
+@app.get("/api/v3/rootfolder")
+async def get_root_folders(api_key: str = Depends(get_medusa_key)):
+    return [{"id": 1, "path": "/tv", "accessible": True, "freeSpace": 500000000000, "unmappedFolders": []}]
+
+@app.get("/api/v3/filesystem")
+async def get_filesystem(path: Optional[str] = Query(None), api_key: str = Depends(get_medusa_key)):
+    return {"parent": "", "directories": [{"name": "tv", "path": "/tv", "type": "directory"}], "files": []}
+
+@app.get("/api/v3/tag")
+async def get_tags(api_key: str = Depends(get_medusa_key)): 
+    return []
+
+@app.get("/api/v3/customformat")
+async def get_custom_formats(api_key: str = Depends(get_medusa_key)): 
+    return []
+
+@app.get("/api/v3/series/lookup")
+async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depends(get_medusa_key)):
+    if not term: return []
+    clean_term = term.replace("tvdb:", "").strip() 
+    try:
+        res = await async_client.get("/api/v2/series/lookup", params={"q": clean_term, "indexer": "tvdb"}, headers=medusa_headers(api_key))
+        if res.status_code != 200: return []
+        return [{
+            "title": item.get("title"),
+            "tvdbId": extract_clean_integer_id(item),
+            "imdbId": item.get("ids", {}).get("imdb", ""),
+            "images": build_sonarr_images(extract_clean_integer_id(item)),
+            "alternateTitles": [],
+            "genres": [],
+            "seriesType": "standard",
+            "overview": item.get("overview"),
+            "year": extract_clean_year(item),
+            "remotePoster": item.get("image", ""),
+            "added": "2026-01-01T00:00:00Z",
+        } for item in res.json()]
+    except Exception:
+        return []
+
+@app.get("/api/v3/series/{series_id}")
+async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_key)):
+    if series_id == 0:
+        return {"id": 0, "title": "Initialization Stub", "tvdbId": 0, "year": 0, "imdbId": "", "images": [], "alternateTitles": [], "genres": [], "seriesType": "standard", "path": "/tv", "monitored": False, "added": "2026-01-01T00:00:00Z"}
+    try:
+        res = await async_client.get(f"/api/v2/series/{series_id}", headers=medusa_headers(api_key))
+        if res.status_code != 200:
+            raise HTTPException(status_code=404, detail="Series not found")
+            
+        show = res.json()
+        clean_id = extract_clean_integer_id(show)
+        return {
+            "id": int(clean_id),
+            "title": show.get("title"),
+            "tvdbId": int(clean_id),
+            "imdbId": show.get("ids", {}).get("imdb", ""),
+            "year": extract_clean_year(show),
+            "images": build_sonarr_images(int(clean_id)),
+            "alternateTitles": [],
+            "genres": [],
+            "seriesType": "standard",
+            "path": show.get("path", "/tv"),
+            "monitored": not show.get("paused", False),
+            "added": "2026-01-01T00:00:00Z",
+        }
+    except Exception:
+        raise HTTPException(status_code=404, detail="Series not found")
+
+class SonarrAddSeries(BaseModel):
+    title: str
+    tvdbId: int
+    profileId: int
+    rootFolderPath: str
+    monitored: bool = True
+
+@app.post("/api/v3/series")
+async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa_key)):
+    medusa_payload = {
+        "config": {"location": f"{payload.rootFolderPath}/{payload.title}", "qualities": [], "paused": not payload.monitored},
+        "ids": {"tvdb": payload.tvdbId},
+        "selectedIndexer": "tvdb"
+    }
+    try:
+        res = await async_client.post("/api/v2/series", json=medusa_payload, headers=medusa_headers(api_key))
+        if res.status_code in [200, 201]:
+            new_show = res.json()
+            clean_id = extract_clean_integer_id(new_show)
+            SERIES_ID_MAP[int(clean_id)] = f"tvdb{payload.tvdbId}"
+            return {
+                "id": int(clean_id),
+                "title": payload.title,
+                "tvdbId": payload.tvdbId,
+                "imdbId": "",
+                "year": 0,
+                "images": build_sonarr_images(int(clean_id)),
+                "alternateTitles": [],
+                "genres": [],
+                "seriesType": "standard",
+                "path": medusa_payload["config"]["location"],
+                "monitored": payload.monitored,
+                "profileId": payload.profileId,
+                "added": "2026-01-01T00:00:00Z",
+            }
+        return JSONResponse(status_code=res.status_code, content=res.json())
+    except Exception as e:
+        return JSONResponse(status_code=502, content={"error": str(e)})
+
+@app.get("/api/v3/episode")
 async def get_episodes(
     seriesId: Optional[int] = Query(None),
     seriesid: Optional[int] = Query(None),
-    client: MedusaClient = Depends(get_client)
+    includeEpisodeFile: bool = Query(False),
+    api_key: str = Depends(get_medusa_key)
 ):
     target_id = seriesId or seriesid
-    if not target_id:
+    if not target_id: return []
+    if not SERIES_ID_MAP: await core_all_series(api_key)
+
+    medusa_id = SERIES_ID_MAP.get(target_id, target_id)
+    try:
+        res = await async_client.get(f"/api/v2/series/{medusa_id}/episodes", headers=medusa_headers(api_key))
+        if res.status_code != 200: return []
+
+        translated_episodes = []
+        for ep in res.json():
+            status_str = str(ep.get("status", "")).lower()
+            has_file = status_str in ["downloaded", "snatched"]
+            episode = {
+                "id": int(ep.get("id", 0)),
+                "seriesId": int(target_id),
+                "episodeFileId": int(ep.get("id", 0)) if has_file else 0,
+                "seasonNumber": int(ep.get("season", 0)),
+                "episodeNumber": int(ep.get("episode", ep.get("number", 0))),
+                "title": ep.get("title", ""),
+                "overview": ep.get("overview", ""),
+                "monitored": True,
+                "hasFile": has_file
+            }
+            if includeEpisodeFile and has_file:
+                episode["episodeFile"] = {"id": int(ep.get("id", 0)), "seriesId": int(target_id), "size": 0}
+            translated_episodes.append(episode)
+        return translated_episodes
+    except Exception:
         return []
-    
-    eps = await client.get_episodes(target_id)
-    return [MedusaTranslator.to_sonarr_episode(ep, target_id) for ep in eps]
 
 @app.get("/api/v3/episodefile")
 async def get_episode_files(seriesId: Optional[int] = Query(None), seriesid: Optional[int] = Query(None)):
     return []
 
-@app.post("/api/v3/command")
-async def execute_command(command: SonarrCommand, client: MedusaClient = Depends(get_client)):
-    print(f"[GorgonTarget] Received POST command request: {command.name}", file=sys.stderr, flush=True)
-    return {"id": 1000, "name": command.name, "state": "completed"}
+# ---------------------------------------------------------------------------
+# CALENDAR, QUEUE, WANTED & HISTORY TRAFFIC
+# ---------------------------------------------------------------------------
+@app.get("/api/v3/calendar")
+async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: str = Depends(get_medusa_key)):
+    try:
+        res = await async_client.get("/api/v2/schedule", headers=medusa_headers(api_key))
+        if res.status_code != 200: return []
+        return [{
+            "id": int(item.get("id", 0)),
+            "seriesId": int(item.get("seriesId", 0)),
+            "episodeNumber": item.get("episode"),
+            "seasonNumber": item.get("season"),
+            "title": item.get("title"),
+            "airDateUtc": item.get("airDate"),
+            "series": {"title": item.get("show_name", "Unknown")}
+        } for item in res.json().get("coming", [])]
+    except Exception:
+        return []
 
-@app.get("/api/v3/command")
-async def get_active_commands():
-    return []
-
-# --- TRAFFIC ENDPOINTS ---
+@app.get("/api/v3/wanted/missing")
+async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
+    try:
+        res = await async_client.get("/api/v2/schedule", headers=medusa_headers(api_key))
+        if res.status_code != 200: return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
+        combined = res.json().get("missed", []) + res.json().get("coming", [])
+        records = [{
+            "id": int(item.get("id", idx + 1000)),
+            "seriesId": int(item.get("seriesId", 0)),
+            "episodeNumber": item.get("episode"),
+            "seasonNumber": item.get("season"),
+            "title": item.get("title"),
+            "airDateUtc": item.get("airDate"),
+            "series": {"title": item.get("show_name", "Unknown")},
+            "monitored": True
+        } for idx, item in enumerate(combined)]
+        return {"page": 1, "pageSize": len(records) or 20, "totalRecords": len(records), "records": records}
+    except Exception:
+        return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
 
 @app.get("/api/v3/queue")
-async def get_queue_records(page: int = 1, pageSize: int = 50):
+async def get_queue(page: int = 1, pageSize: int = 20, api_key: str = Depends(get_medusa_key)):
     return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
 
 @app.get("/api/v3/queue/status")
-async def get_queue_status():
-    return {"queuedCount": 0, "records": []}
+async def get_queue_status(api_key: str = Depends(get_medusa_key)):
+    return {"totalCount": 0, "count": 0, "pageSize": 20, "sortKey": "timeleft", "unknownQueueItems": 0, "queued": 0, "downloading": 0, "failed": 0, "errors": False, "warnings": False}
 
 @app.get("/api/v3/history")
-async def get_history(
-    page: int = 1,
-    pageSize: int = 100,
-    sortKey: str = "date",
-    sortDirection: str = "descending"
-):
-    return {
-        "page": page,
-        "pageSize": pageSize,
-        "sortKey": sortKey,
-        "sortDirection": sortDirection,
-        "totalRecords": 0,
-        "records": []
-    }
+async def get_history(page: int = 1, pageSize: int = 100, api_key: str = Depends(get_medusa_key)):
+    try:
+        res = await async_client.get("/api/v2/history", headers=medusa_headers(api_key))
+        if res.status_code != 200: return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
+        records = [{
+            "id": i + 1,
+            "sourceTitle": item.get("show_name", "Unknown"),
+            "eventType": item.get("action", "unknown"),
+            "date": item.get("date", "2026-01-01T00:00:00Z"),
+            "seriesId": int(item.get("series_id", 0)),
+            "episodeId": int(item.get("episode_id", 0))
+        } for i, item in enumerate(res.json())]
+        return {"page": page, "pageSize": pageSize, "totalRecords": len(records), "records": records}
+    except Exception:
+        return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
 
-@app.get("/api/v3/wanted/missing")
-async def get_wanted_missing(
-    page: int = 1,
-    pageSize: int = 200,
-    sortKey: str = "airDateUtc",
-    sortDirection: str = "descending"
-):
-    return {
-        "page": page,
-        "pageSize": pageSize,
-        "sortKey": sortKey,
-        "sortDirection": sortDirection,
-        "totalRecords": 0,
-        "records": []
-    }
+# ---------------------------------------------------------------------------
+# HARDWARE & MANAGEMENT AGENTS
+# ---------------------------------------------------------------------------
+@app.get("/api/v3/downloadclient")
+async def get_download_clients(api_key: str = Depends(get_medusa_key)): return []
 
-@app.get("/api/v3/calendar")
-async def get_calendar(start: Optional[str] = None, end: Optional[str] = None):
-    return []
+@app.get("/api/v3/indexer")
+async def get_indexers(api_key: str = Depends(get_medusa_key)): return []
 
-# --- STATIC COMPATIBILITY STUBS ---
+@app.get("/api/v3/metadata")
+async def get_metadata_consumers(api_key: str = Depends(get_medusa_key)): return []
 
-@app.get("/api/v3/tag")
-async def get_tags():
-    return []
+class SonarrCommand(BaseModel):
+    name: str
+    seriesId: Optional[int] = None
 
-@app.get("/api/v3/diskspace")
-async def get_disk_space(): 
-    return [{"path": "/tv", "label": "TV Shows", "freeSpace": 500000000000, "totalSpace": 1000000000000}]
+@app.post("/api/v3/command")
+async def execute_command(command: SonarrCommand, api_key: str = Depends(get_medusa_key)):
+    if command.name in ["RefreshSeries", "RescanSeries"] and command.seriesId:
+        await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-update", headers=medusa_headers(api_key))
+    elif command.name == "SeriesSearch" and command.seriesId:
+        await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-search", headers=medusa_headers(api_key))
+    return {"id": 1000, "name": command.name, "state": "completed"}
 
-@app.get("/api/v3/qualityprofile")
-async def get_quality_profiles(): 
-    return [{"id": 1, "name": "Medusa Managed Profile", "upgradeAllowed": False, "cutoff": 1, "items": []}]
+@app.get("/api/v3/command/{command_id}")
+async def get_command_status(command_id: int, api_key: str = Depends(get_medusa_key)):
+    return {"id": command_id, "state": "completed"}
 
-@app.get("/api/v3/languageprofile")
-async def get_language_profiles(): 
-    return [{"id": 1, "name": "English", "cutoff": {"id": 1, "name": "English"}, "languages": [{"language": {"id": 1, "name": "English"}, "allowed": True}]}]
-
-@app.get("/api/v3/rootfolder")
-async def get_root_folders(): 
-    return [{"id": 1, "path": "/tv", "accessible": True, "freeSpace": 500000000000, "unmappedFolders": []}]
-
+# ---------------------------------------------------------------------------
+# GLOBAL STATIC COMPATIBILITY STUBS
+# ---------------------------------------------------------------------------
 @app.get("/api/v3/system/tasks")
 @app.get("/api/v3/system/backup")
 @app.get("/api/v3/config")
