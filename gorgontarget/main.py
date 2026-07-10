@@ -42,6 +42,8 @@ async def get_client(
 async def root_index():
     return {"status": "running", "service": settings.app_name}
 
+# Backward compatibility mapping for old clients checking legacy /api/system/status paths
+@app.get("/api/system/status", response_model=SonarrSystemStatus)
 @app.get("/api/v3/system/status", response_model=SonarrSystemStatus)
 async def get_system_status(client: MedusaClient = Depends(get_client)):
     config = await client.get_system_config()
@@ -95,11 +97,25 @@ async def get_episodes(
     eps = await client.get_episodes(target_id)
     return [MedusaTranslator.to_sonarr_episode(ep, target_id) for ep in eps]
 
+@app.get("/api/v3/episodefile")
+async def get_episode_files(seriesId: Optional[int] = Query(None), seriesid: Optional[int] = Query(None)):
+    # Stubbing an empty video file collection to inform external clients that disk parsing can rely on Medusa natively
+    return []
+
 @app.post("/api/v3/command")
 async def execute_command(command: SonarrCommand, client: MedusaClient = Depends(get_client)):
     return {"id": 1000, "name": command.name, "state": "completed"}
 
-# --- NEW TRAFFIC ENDPOINTS RESOLVING 404s ---
+@app.get("/api/v3/command")
+async def get_active_commands():
+    # Resolves the 405 Method Not Allowed error when clients ask for a history of running background tasks
+    return []
+
+# --- TRAFFIC ENDPOINTS ---
+
+@app.get("/api/v3/queue")
+async def get_queue_records(page: int = 1, pageSize: int = 50):
+    return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
 
 @app.get("/api/v3/queue/status")
 async def get_queue_status():
@@ -142,6 +158,10 @@ async def get_calendar(start: Optional[str] = None, end: Optional[str] = None):
     return []
 
 # --- STATIC COMPATIBILITY STUBS ---
+
+@app.get("/api/v3/tag")
+async def get_tags():
+    return []
 
 @app.get("/api/v3/diskspace")
 async def get_disk_space(): 
