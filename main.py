@@ -437,30 +437,6 @@ async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa
         log_debug(f"Exception in add_series: {e}")
         return JSONResponse(status_code=502, content={"error": str(e)})
 
-@app.get("/api/v3/series/lookup")
-async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depends(get_medusa_key)):
-    if not term: return []
-    # Handle both 'tvdb:12345' and '12345'
-    clean_term = term.replace("tvdb:", "").strip() 
-    try:
-        res = await async_client.get("/api/v2/series/lookup", params={"q": clean_term, "indexer": "tvdb"}, headers=medusa_headers(api_key))
-        if res.status_code != 200: return []
-        return [{
-            "title": item.get("title"),
-            "tvdbId": extract_clean_integer_id(item),
-            "imdbId": item.get("ids", {}).get("imdb", ""),
-            "images": [],
-            "alternateTitles": [],
-            "genres": [],
-            "seriesType": "standard",
-            "overview": item.get("overview"),
-            "year": extract_clean_year(item),
-            "remotePoster": item.get("image", ""),
-            "added": "2026-01-01T00:00:00Z",
-        } for item in res.json()]
-    except Exception:
-        return []
-
 @app.get("/api/v3/series/{series_id}")
 async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_key)):
     if series_id == 0:
