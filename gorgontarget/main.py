@@ -469,4 +469,49 @@ async def get_history(page: int = 1, pageSize: int = 100, api_key: str = Depends
 # HARDWARE & MANAGEMENT AGENTS
 # ---------------------------------------------------------------------------
 @app.get("/api/v3/downloadclient")
-async def get_download_clients(api_key: str = Depends(get_medusa_key)):
+async def get_download_clients(api_key: str = Depends(get_medusa_key)): return []
+
+@app.get("/api/v3/indexer")
+async def get_indexers(api_key: str = Depends(get_medusa_key)): return []
+
+@app.get("/api/v3/metadata")
+async def get_metadata_consumers(api_key: str = Depends(get_medusa_key)): return []
+
+class SonarrCommand(BaseModel):
+    name: str
+    seriesId: Optional[int] = None
+
+@app.post("/api/v3/command")
+async def execute_command(command: SonarrCommand, api_key: str = Depends(get_medusa_key)):
+    if command.name in ["RefreshSeries", "RescanSeries"] and command.seriesId:
+        await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-update", headers=medusa_headers(api_key))
+    elif command.name == "SeriesSearch" and command.seriesId:
+        await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-search", headers=medusa_headers(api_key))
+    return {"id": 1000, "name": command.name, "state": "completed"}
+
+@app.get("/api/v3/command/{command_id}")
+async def get_command_status(command_id: int, api_key: str = Depends(get_medusa_key)):
+    return {"id": command_id, "state": "completed"}
+
+# ---------------------------------------------------------------------------
+# GLOBAL STATIC COMPATIBILITY STUBS
+# ---------------------------------------------------------------------------
+@app.get("/api/v3/system/tasks")
+@app.get("/api/v3/system/backup")
+@app.get("/api/v3/config")
+@app.get("/api/v3/config/ui")
+@app.get("/api/v3/config/host")
+@app.get("/api/v3/config/downloadclient")
+@app.get("/api/v3/config/indexer")
+@app.get("/api/v3/health")
+@app.get("/api/v3/ping")
+@app.get("/api/v3/log")
+@app.get("/api/v3/release")
+@app.get("/api/v3/manualimport")
+@app.get("/api/v3/notification")
+@app.get("/api/v3/importlist")
+@app.get("/api/v3/delayprofile")
+@app.get("/api/v3/naming")
+@app.get("/api/v3/blocklist")
+async def generic_sonarr_stubs(): 
+    return []
