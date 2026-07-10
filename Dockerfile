@@ -19,7 +19,9 @@ WORKDIR /app
 
 # Copy the pre-installed musl-compiled dependencies
 COPY --from=builder /opt/venv /opt/venv
-COPY main.py .
+
+# COPY THE ENTIRE PACKAGE INSTEAD OF JUST main.py
+COPY gorgontarget/ ./gorgontarget/
 
 # Set system variables for optimal Python container execution
 ENV PATH="/opt/venv/bin:$PATH" \
@@ -30,6 +32,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
 RUN adduser -D appuser
 USER appuser
 
+# Standardized to 8000
 EXPOSE 8888
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8888", "--workers", "1"]
+# Update the Uvicorn path to point to the package
+CMD ["uvicorn", "gorgontarget.main:app", "--host", "0.0.0.0", "--port", "8888", "--workers", "1"]
