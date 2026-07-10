@@ -57,6 +57,17 @@ def build_sonarr_images(series_id: int) -> List[Dict[str, str]]:
         {"coverType": "fanart", "url": f"/api/v3/mediacover/{series_id}/fanart.jpg"}
     ]
 
+def parse_medusa_size(size_str: str) -> int:
+    """Converts '547.56 GB' or '1.39 TB' to bytes."""
+    try:
+        if not size_str: return 0
+        val, unit = size_str.split()
+        val = float(val)
+        multipliers = {"GB": 10**9, "TB": 10**12, "MB": 10**6}
+        return int(val * multipliers.get(unit.upper(), 1))
+    except:
+        return 0
+
 # ---------------------------------------------------------------------------
 # DYNAMIC AUTHENTICATION HELPER
 # ---------------------------------------------------------------------------
@@ -537,29 +548,69 @@ async def get_health_proxy(api_key: str = Depends(get_medusa_key)):
     return [{"source": "Medusa", "type": status, "message": "Backend operational"}]
 
 @app.get("/api/v3/diskspace")
-async def get_diskspace_proxy(api_key: str = Depends(get_medusa_key)):
-    """Maps root folder paths to disk space reporting."""
-    # PyMedusa doesn't provide a raw disk space endpoint; 
-    # we simulate based on configured paths
-    return [{"path": "/tv", "label": "TV Series", "freeSpace": 100000000000, "totalSpace": 500000000000}]
+async def get_disk_space(api_key: str = Depends(get_medusa_key)):
+    res = await async_client.get("/api/v2/config", headers=medusa_headers(api_key))
+    if res.status_code != 200:
+        return []
+    
+    config = res.json()
+    disk_data = config.get("diskSpace", {})
+    records = []
+
+    # Map rootDir list
+    for root in disk_data.get("rootDir", []):
+        records.append({
+            "path": root.get("location"),
+            "label": root.get("type"),
+            "freeSpace": parse_medusa_size(root.get("freeSpace")),
+            "totalSpace": 0 # Medusa doesn't provide total, Sonarr UI handles this gracefully
+        })
+        
+    return records
 
 @app.get("/api/v3/downloadclient")
-async def get_download_clients_proxy(api_key: str = Depends(get_medusa_key)):
+async def get_download_clients(api_key: str = Depends(get_medusa_key)):
     res = await async_client.get("/api/v2/config/downloaders", headers=medusa_headers(api_key))
-    return res.json() if res.status_code == 200 else []
+    if res.status_code != 200: return []
+    
+    # Transform Medusa format to Sonarr format
+    return [{
+        "id": i,
+        "name": d.get("name", "Unknown"),
+        "enable": d.get("enabled", True),
+        "protocol": "torrent",
+        "implementation": d.get("type", "generic")
+    } for i, d in enumerate(res.json())]
 
 @app.get("/api/v3/indexer")
-async def get_indexers_proxy(api_key: str = Depends(get_medusa_key)):
+async def get_indexers(api_key: str = Depends(get_medusa_key)):
     res = await async_client.get("/api/v2/config/indexers", headers=medusa_headers(api_key))
-    return res.json() if res.status_code == 200 else []
+    if res.status_code != 200: return []
+    
+    return [{
+        "id": i,
+        "name": idx.get("name", "Indexer"),
+        "enableRss": idx.get("enabled", True),
+        "enableAutomaticSearch": True,
+        "enableInteractiveSearch": True
+    } for i, idx in enumerate(res.json())]
 
 @app.get("/api/v3/log")
-async def get_logs_proxy(page: int = 1, pageSize: int = 20, api_key: str = Depends(get_medusa_key)):
-    """Fetches logs from Medusa backend."""
-    # Sonarr expects a paged response
+async def get_logs(page: int = 1, pageSize: int = 20, api_key: str = Depends(get_medusa_key)):
     res = await async_client.get("/api/v2/logs", headers=medusa_headers(api_key))
     logs = res.json() if res.status_code == 200 else []
-    return {"page": page, "pageSize": pageSize, "totalRecords": len(logs), "records": logs}
+    
+    return {
+        "page": page,
+        "pageSize": pageSize,
+        "totalRecords": len(logs),
+        "records": [{
+            "time": log.get("time", "2026-01-01T00:00:00Z"),
+            "level": log.get("level", "info"),
+            "message": log.get("message", ""),
+            "logger": "Medusa"
+        } for log in logs]
+    }
 
 # ---------------------------------------------------------------------------
 # REMAINING STUBS
