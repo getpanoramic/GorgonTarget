@@ -157,7 +157,10 @@ async def core_all_series(api_key: str):
         
         title = show.get("title", f"Series {medusa_id}")
         raw_path = show.get("path", "")
-        path = str(raw_path) if raw_path and raw_path != "/tv" else f"/tv/{title.replace('/', '_').replace('\\', '_')}"
+        
+        # Python 3.11 Syntax Fix: Build safe string outside the f-string
+        safe_title = title.replace("/", "_").replace("\\", "_")
+        path = str(raw_path) if raw_path and raw_path != "/tv" else f"/tv/{safe_title}"
 
         sonarr_shows.append({
             "id": int(medusa_id),
