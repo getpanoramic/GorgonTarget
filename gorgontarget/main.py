@@ -585,15 +585,27 @@ async def get_download_clients(api_key: str = Depends(get_medusa_key)):
 @app.get("/api/v3/indexer")
 async def get_indexers(api_key: str = Depends(get_medusa_key)):
     res = await async_client.get("/api/v2/config/indexers", headers=medusa_headers(api_key))
-    if res.status_code != 200: return []
+    if res.status_code != 200: 
+        return []
     
-    return [{
-        "id": i,
-        "name": idx.get("name", "Indexer"),
-        "enableRss": idx.get("enabled", True),
-        "enableAutomaticSearch": True,
-        "enableInteractiveSearch": True
-    } for i, idx in enumerate(res.json())]
+    data = res.json()
+    # Handle the case where Medusa returns a list of strings
+    if not isinstance(data, list):
+        return []
+
+    indexers = []
+    for i, item in enumerate(data):
+        # Determine name based on whether item is a dict or a plain string
+        name = item.get("name", "Indexer") if isinstance(item, dict) else str(item)
+        
+        indexers.append({
+            "id": i + 1,
+            "name": name,
+            "enableRss": True,
+            "enableAutomaticSearch": True,
+            "enableInteractiveSearch": True
+        })
+    return indexers
 
 @app.get("/api/v3/log")
 async def get_logs(page: int = 1, pageSize: int = 20, api_key: str = Depends(get_medusa_key)):
