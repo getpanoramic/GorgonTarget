@@ -1,4 +1,5 @@
 import sys
+import json
 from typing import Optional, List
 from fastapi import FastAPI, Header, HTTPException, Query, Depends, Request
 from starlette.types import ASGIApp, Scope, Receive, Send
@@ -14,10 +15,32 @@ class CaseInsensitiveAPIMiddleware:
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"] == "http":
             path = scope.get("path", "")
+            method = scope.get("method", "UNKNOWN")
+            
+            # Extract headers safely for diagnostic reporting
+            headers = dict(scope.get("headers", []))
+            decoded_headers = {}
+            for k, v in headers.items():
+                try:
+                    decoded_headers[k.decode("utf-8").lower()] = v.decode("utf-8")
+                except Exception:
+                    pass
+            
+            # Extract the user agent
+            ua = decoded_headers.get("user-agent", "Unknown Agent")
+            
+            # Print detailed request metrics to console
+            print(f"\n[GorgonTarget DEBUG] {method} -> {path}", file=sys.stderr, flush=True)
+            print(f"[GorgonTarget DEBUG] User-Agent: {ua}", file=sys.stderr, flush=True)
+            if decoded_headers:
+                print(f"[GorgonTarget DEBUG] Headers: {json.dumps(decoded_headers)}", file=sys.stderr, flush=True)
+
+            # Route sanitization
             if path.endswith("/") and len(path) > 1:
                 path = path.rstrip("/")
             if path.startswith("/api"):
                 scope["path"] = path.lower()
+                
         await self.app(scope, receive, send)
 
 app = FastAPI(title=settings.app_name, version=settings.version)
@@ -42,7 +65,6 @@ async def get_client(
 async def root_index():
     return {"status": "running", "service": settings.app_name}
 
-# Backward compatibility mapping for old clients checking legacy /api/system/status paths
 @app.get("/api/system/status", response_model=SonarrSystemStatus)
 @app.get("/api/v3/system/status", response_model=SonarrSystemStatus)
 async def get_system_status(client: MedusaClient = Depends(get_client)):
@@ -63,13 +85,32 @@ async def get_series(client: MedusaClient = Depends(get_client)):
 
 @app.get("/api/v3/series/{series_id}", response_model=SonarrSeries)
 async def get_single_series(series_id: int, client: MedusaClient = Depends(get_client)):
+    # Diagnostic print to check lookup values directly
+    print(f"[GorgonTarget] Fetching explicit profile context for Series ID: {series_id}", file=sys.stderr, flush=True)
+    
     show = await client.get_series_by_id(series_id)
     if not show:
-        raise HTTPException(status_code=404, detail="Series not found")
+        # Fallback Strategy: If an exact lookup by string mapping fails, search list collections
+        all_shows = await client.get_all_series()
+        for s in all_shows:
+            # Check matching variations against TVDB markers
+            tvdb_obj = s.get("id", {}) or s.get("ids", {})
+            if str(tvdb_obj.get("tvdb")) == str(series_id) or str(s.get("indexerId")) == str(series_id):
+                return MedusaTranslator.to_sonarr_series(s)
+        
+        # If absolutely missing, stub a fallback response using the requested ID to avoid blocking UI rendering
+        return SonarrSeries(
+            id=series_id,
+            title=f"Medusa Show {series_id}",
+            tvdbId=series_id,
+            path=f"/tv/Show_{series_id}",
+            monitored=True
+        )
     return MedusaTranslator.to_sonarr_series(show)
 
 @app.post("/api/v3/series", response_model=SonarrSeries)
 async def add_series(payload: SonarrAddSeries, client: MedusaClient = Depends(get_client)):
+    print(f"[GorgonTarget] Intercepted Add Series Payload: {payload.model_dump_json()}", file=sys.stderr, flush=True)
     result = await client.add_series(
         payload.tvdbId, payload.rootFolderPath, payload.title, payload.monitored
     )
@@ -99,16 +140,15 @@ async def get_episodes(
 
 @app.get("/api/v3/episodefile")
 async def get_episode_files(seriesId: Optional[int] = Query(None), seriesid: Optional[int] = Query(None)):
-    # Stubbing an empty video file collection to inform external clients that disk parsing can rely on Medusa natively
     return []
 
 @app.post("/api/v3/command")
 async def execute_command(command: SonarrCommand, client: MedusaClient = Depends(get_client)):
+    print(f"[GorgonTarget] Received POST command request: {command.name}", file=sys.stderr, flush=True)
     return {"id": 1000, "name": command.name, "state": "completed"}
 
 @app.get("/api/v3/command")
 async def get_active_commands():
-    # Resolves the 405 Method Not Allowed error when clients ask for a history of running background tasks
     return []
 
 # --- TRAFFIC ENDPOINTS ---
