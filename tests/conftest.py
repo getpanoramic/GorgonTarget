@@ -1,4 +1,5 @@
 import pytest
+import httpx
 from httpx import AsyncClient
 from gorgontarget.main import app
 
@@ -29,5 +30,7 @@ def mock_medusa_series_response():
 
 @pytest.fixture
 async def async_app_client():
-    async with AsyncClient(app=app, base_url="http://testserver") as client:
+    # Use ASGITransport to properly bind the FastAPI app in modern httpx versions
+    transport = httpx.ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         yield client
