@@ -33,11 +33,10 @@ async def get_client(
         raise HTTPException(status_code=401, detail="Missing API Key context.")
     
     client = MedusaClient(key)
-    # Detect caps on auth
     await client.detect_capabilities()
     return client
 
-# --- CORE ENDPOINTS ---
+# --- CORE INTEGRATION ENDPOINTS ---
 
 @app.get("/")
 async def root_index():
@@ -75,7 +74,6 @@ async def add_series(payload: SonarrAddSeries, client: MedusaClient = Depends(ge
     if not result:
         raise HTTPException(status_code=502, detail="Failed to add series to Medusa")
     
-    # Standardize response shape back to client
     return SonarrSeries(
         id=int(payload.tvdbId),
         title=payload.title,
@@ -99,23 +97,68 @@ async def get_episodes(
 
 @app.post("/api/v3/command")
 async def execute_command(command: SonarrCommand, client: MedusaClient = Depends(get_client)):
-    # Stubs Medusa client command invocation
     return {"id": 1000, "name": command.name, "state": "completed"}
 
-# --- COMPATIBILITY STUBS (PHASE 2) ---
+# --- NEW TRAFFIC ENDPOINTS RESOLVING 404s ---
+
+@app.get("/api/v3/queue/status")
+async def get_queue_status():
+    return {"queuedCount": 0, "records": []}
+
+@app.get("/api/v3/history")
+async def get_history(
+    page: int = 1,
+    pageSize: int = 100,
+    sortKey: str = "date",
+    sortDirection: str = "descending"
+):
+    return {
+        "page": page,
+        "pageSize": pageSize,
+        "sortKey": sortKey,
+        "sortDirection": sortDirection,
+        "totalRecords": 0,
+        "records": []
+    }
+
+@app.get("/api/v3/wanted/missing")
+async def get_wanted_missing(
+    page: int = 1,
+    pageSize: int = 200,
+    sortKey: str = "airDateUtc",
+    sortDirection: str = "descending"
+):
+    return {
+        "page": page,
+        "pageSize": pageSize,
+        "sortKey": sortKey,
+        "sortDirection": sortDirection,
+        "totalRecords": 0,
+        "records": []
+    }
+
+@app.get("/api/v3/calendar")
+async def get_calendar(start: Optional[str] = None, end: Optional[str] = None):
+    return []
+
+# --- STATIC COMPATIBILITY STUBS ---
+
 @app.get("/api/v3/diskspace")
-async def get_disk_space(): return [{"path": "/tv", "label": "TV Shows", "freeSpace": 500000000000, "totalSpace": 1000000000000}]
+async def get_disk_space(): 
+    return [{"path": "/tv", "label": "TV Shows", "freeSpace": 500000000000, "totalSpace": 1000000000000}]
 
 @app.get("/api/v3/qualityprofile")
-async def get_quality_profiles(): return [{"id": 1, "name": "Medusa Managed Profile", "upgradeAllowed": False, "cutoff": 1, "items": []}]
+async def get_quality_profiles(): 
+    return [{"id": 1, "name": "Medusa Managed Profile", "upgradeAllowed": False, "cutoff": 1, "items": []}]
 
 @app.get("/api/v3/languageprofile")
-async def get_language_profiles(): return [{"id": 1, "name": "English", "cutoff": {"id": 1, "name": "English"}, "languages": [{"language": {"id": 1, "name": "English"}, "allowed": True}]}]
+async def get_language_profiles(): 
+    return [{"id": 1, "name": "English", "cutoff": {"id": 1, "name": "English"}, "languages": [{"language": {"id": 1, "name": "English"}, "allowed": True}]}]
 
 @app.get("/api/v3/rootfolder")
-async def get_root_folders(): return [{"id": 1, "path": "/tv", "accessible": True, "freeSpace": 500000000000, "unmappedFolders": []}]
+async def get_root_folders(): 
+    return [{"id": 1, "path": "/tv", "accessible": True, "freeSpace": 500000000000, "unmappedFolders": []}]
 
-# Maximize integration compatibility by gracefully handling Sonarr peripheral endpoints
 @app.get("/api/v3/system/tasks")
 @app.get("/api/v3/system/backup")
 @app.get("/api/v3/config")
