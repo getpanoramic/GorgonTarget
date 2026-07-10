@@ -486,10 +486,19 @@ class SonarrCommand(BaseModel):
 
 @app.post("/api/v3/command")
 async def execute_command(command: SonarrCommand, api_key: str = Depends(get_medusa_key)):
-    if command.name in ["RefreshSeries", "RescanSeries"] and command.seriesId:
-        await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-update", headers=medusa_headers(api_key))
+    headers = medusa_headers(api_key)
+    
+    # Mapping Sonarr commands to Medusa internal actions
+    if command.name == "RefreshSeries" and command.seriesId:
+        await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-update", headers=headers)
+    elif command.name == "RescanSeries" and command.seriesId:
+        await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-search", headers=headers)
     elif command.name == "SeriesSearch" and command.seriesId:
-        await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-search", headers=medusa_headers(api_key))
+        await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-search", headers=headers)
+    elif command.name == "CheckForUpdates":
+        # New: Triggering the system update via Medusa operation API
+        await async_client.post("/api/v2/system/operation", json={"command": "check_update"}, headers=headers)
+        
     return {"id": 1000, "name": command.name, "state": "completed"}
 
 @app.get("/api/v3/command/{command_id}")
@@ -497,16 +506,41 @@ async def get_command_status(command_id: int, api_key: str = Depends(get_medusa_
     return {"id": command_id, "state": "completed"}
 
 # ---------------------------------------------------------------------------
-# GLOBAL STATIC COMPATIBILITY STUBS
+# UPDATED FUNCTIONAL ENDPOINTS
+# ---------------------------------------------------------------------------
+
+@app.get("/api/v3/update")
+async def get_updates(api_key: str = Depends(get_medusa_key)):
+    """Triggers update check and returns status."""
+    await async_client.post("/api/v2/system/operation", json={"command": "check_update"}, headers=medusa_headers(api_key))
+    return []
+
+@app.get("/api/v3/autotagging")
+async def get_autotagging(api_key: str = Depends(get_medusa_key)):
+    """Maps Medusa labels to Autotagging UI."""
+    res = await async_client.get("/api/v2/labels", headers=medusa_headers(api_key))
+    if res.status_code == 200:
+        return [{"id": label.get("id"), "label": label.get("name")} for label in res.json()]
+    return []
+
+@app.get("/api/v3/system/backup")
+async def get_backups(api_key: str = Depends(get_medusa_key)):
+    res = await async_client.get("/api/v2/config/backup", headers=medusa_headers(api_key))
+    return res.json() if res.status_code == 200 else []
+
+@app.get("/api/v3/health")
+async def get_health():
+    return [{"source": "Medusa", "type": "ok", "message": "System Operational"}]
+
+# ---------------------------------------------------------------------------
+# REMAINING STUBS
 # ---------------------------------------------------------------------------
 @app.get("/api/v3/system/tasks")
-@app.get("/api/v3/system/backup")
 @app.get("/api/v3/config")
 @app.get("/api/v3/config/ui")
 @app.get("/api/v3/config/host")
 @app.get("/api/v3/config/downloadclient")
 @app.get("/api/v3/config/indexer")
-@app.get("/api/v3/health")
 @app.get("/api/v3/ping")
 @app.get("/api/v3/log")
 @app.get("/api/v3/release")
