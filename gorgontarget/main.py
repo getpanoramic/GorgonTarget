@@ -567,13 +567,48 @@ async def get_diskspace(api_key: str = Depends(get_medusa_key)):
 
 @app.get("/api/v3/downloadclient")
 async def get_download_clients(api_key: str = Depends(get_medusa_key)):
-    # Medusa config contains downloader info
     res = await async_client.get("/api/v2/config", headers=medusa_headers(api_key))
-    data = res.json() if res.status_code == 200 else {}
+    if res.status_code != 200: 
+        return []
     
-    # Extracting downloaders; adjust the key based on your specific Medusa config structure
-    clients = data.get("downloaders", []) 
-    return [{"id": i, "name": c.get("name", "Client"), "enable": True} for i, c in enumerate(clients)]
+    data = res.json()
+    clients_data = data.get("clients", {})
+    output = []
+    
+    # 1. Map Torrent client (Transmission)
+    torrent = clients_data.get("torrents", {})
+    if torrent.get("enabled"):
+        output.append({
+            "id": 1,
+            "name": f"Transmission ({torrent.get('method')})",
+            "enable": True,
+            "protocol": "torrent",
+            "implementation": torrent.get("method", "transmission")
+        })
+
+    # 2. Map NZB clients (SABnzbd/NZBGet)
+    nzb = clients_data.get("nzb", {})
+    if nzb.get("enabled"):
+        # Check for SABnzbd
+        if nzb.get("sabnzbd"):
+            output.append({
+                "id": 2,
+                "name": "SABnzbd",
+                "enable": True,
+                "protocol": "usenet",
+                "implementation": "sabnzbd"
+            })
+        # Check for NZBGet
+        if nzb.get("nzbget"):
+            output.append({
+                "id": 3,
+                "name": "NZBGet",
+                "enable": True,
+                "protocol": "usenet",
+                "implementation": "nzbget"
+            })
+            
+    return output
 
 @app.get("/api/v3/indexer")
 async def get_indexers(api_key: str = Depends(get_medusa_key)):
@@ -583,18 +618,34 @@ async def get_indexers(api_key: str = Depends(get_medusa_key)):
     
     return [{"id": i, "name": idx.get("name", "Indexer"), "enableRss": True} for i, idx in enumerate(data)]
 
+import json
+
 @app.get("/api/v3/log")
 async def get_logs(page: int = 1, pageSize: int = 100, api_key: str = Depends(get_medusa_key)):
-    # Using your specific log endpoint with raw=true
     res = await async_client.get("/api/v2/log", params={"raw": "true", "limit": 1000}, headers=medusa_headers(api_key))
-    logs = res.json() if res.status_code == 200 else []
     
-    return {
-        "page": page,
-        "pageSize": pageSize,
-        "totalRecords": len(logs),
-        "records": [{"time": l.get("time"), "level": l.get("level"), "message": l.get("message")} for l in logs]
-    }
+    if res.status_code != 200:
+        return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
+    
+    try:
+        # Use simple json.loads, if it fails, try to grab the first valid JSON object
+        raw_text = res.text
+        # If the API returns multiple JSONs, we take the first valid one or parse as list
+        try:
+            logs = json.loads(raw_text)
+        except json.JSONDecodeError:
+            # Fallback: if Medusa returned broken/concatenated JSON, try to fix
+            logs = json.loads(raw_text.split('\n')[0]) 
+            
+        return {
+            "page": page,
+            "pageSize": pageSize,
+            "totalRecords": len(logs),
+            "records": [{"time": l.get("time"), "level": l.get("level"), "message": l.get("message")} for l in logs]
+        }
+    except Exception as e:
+        log_debug(f"Log parsing error: {e}")
+        return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
 
 def parse_size_to_bytes(size_str):
     try:
@@ -611,8 +662,6 @@ def parse_size_to_bytes(size_str):
 @app.get("/api/v3/config")
 @app.get("/api/v3/config/ui")
 @app.get("/api/v3/config/host")
-@app.get("/api/v3/config/downloadclient")
-@app.get("/api/v3/config/indexer")
 @app.get("/api/v3/ping")
 @app.get("/api/v3/release")
 @app.get("/api/v3/manualimport")
