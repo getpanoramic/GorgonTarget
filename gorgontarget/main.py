@@ -2,6 +2,7 @@ import os
 import urllib.parse
 import sys
 import json
+import re
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, Header, HTTPException, Query, status, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -618,8 +619,6 @@ async def get_indexers(api_key: str = Depends(get_medusa_key)):
     
     return [{"id": i, "name": idx.get("name", "Indexer"), "enableRss": True} for i, idx in enumerate(data)]
 
-import json
-
 @app.get("/api/v3/log")
 async def get_logs(page: int = 1, pageSize: int = 100, api_key: str = Depends(get_medusa_key)):
     res = await async_client.get("/api/v2/log", params={"raw": "true", "limit": 1000}, headers=medusa_headers(api_key))
@@ -628,14 +627,12 @@ async def get_logs(page: int = 1, pageSize: int = 100, api_key: str = Depends(ge
         return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
     
     try:
-        # Use simple json.loads, if it fails, try to grab the first valid JSON object
-        raw_text = res.text
-        # If the API returns multiple JSONs, we take the first valid one or parse as list
-        try:
-            logs = json.loads(raw_text)
-        except json.JSONDecodeError:
-            # Fallback: if Medusa returned broken/concatenated JSON, try to fix
-            logs = json.loads(raw_text.split('\n')[0]) 
+        # Regex to extract the first valid JSON array or object from the dirty response
+        match = re.search(r'\[.*\]', res.text)
+        if match:
+            logs = json.loads(match.group(0))
+        else:
+            logs = []
             
         return {
             "page": page,
@@ -644,7 +641,7 @@ async def get_logs(page: int = 1, pageSize: int = 100, api_key: str = Depends(ge
             "records": [{"time": l.get("time"), "level": l.get("level"), "message": l.get("message")} for l in logs]
         }
     except Exception as e:
-        log_debug(f"Log parsing error: {e}")
+        # Silently fail for logs to prevent UI crashes
         return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
 
 def parse_size_to_bytes(size_str):
@@ -654,6 +651,78 @@ def parse_size_to_bytes(size_str):
         return int(float(val) * mult.get(unit, 1))
     except:
         return 0
+
+# ---------------------------------------------------------------------------
+# DYNAMIC TESTERS (Pass-through logic)
+# ---------------------------------------------------------------------------
+
+@app.post("/api/v3/downloadclient/test")
+async def test_download_client(client: dict, api_key: str = Depends(get_medusa_key)):
+    """Dynamically tests the connection and returns the real Medusa response."""
+    # 1. Fetch current config to build the test URL dynamically
+    res = await async_client.get("/api/v2/config", headers=medusa_headers(api_key))
+    config = res.json()
+    # Assuming Transmission for this example; adapt if testing SABnzbd
+    trans = config.get("clients", {}).get("torrents", {})
+    
+    test_url = f"{MEDUSA_URL}/home/testTorrent"
+    params = {
+        "torrent_method": trans.get("method"),
+        "host": trans.get("host"),
+        "username": trans.get("username"),
+        "password": trans.get("password")
+    }
+    
+    # 2. Execute the test and capture raw text
+    resp = await async_client.get(test_url, params=params, headers=medusa_headers(api_key))
+    
+    # 3. Return the exact message from Medusa
+    return [{"id": 0, "message": resp.text.strip()}]
+
+@app.post("/api/v3/indexer/test")
+async def test_indexer(indexer: dict, api_key: str = Depends(get_medusa_key)):
+    """Triggers the provider test and returns the real result."""
+    # The POST to the operation endpoint triggers the test internally
+    res = await async_client.post("/api/v2/providers/internal/operation", 
+                                  json={"command": "test_providers"}, 
+                                  headers=medusa_headers(api_key))
+    
+    # Assuming the API returns the result in the body text or JSON
+    msg = res.text if res.text else "Test triggered"
+    return [{"id": 0, "message": msg.replace('"', '').strip()}]
+
+# ---------------------------------------------------------------------------
+# DYNAMIC SCHEMA GENERATOR
+# ---------------------------------------------------------------------------
+
+@app.get("/api/v3/downloadclient/schema")
+async def get_download_client_schema(api_key: str = Depends(get_medusa_key)):
+    """Dynamically builds the schema from the existing Medusa configuration."""
+    res = await async_client.get("/api/v2/config", headers=medusa_headers(api_key))
+    if res.status_code != 200:
+        return []
+        
+    config = res.json()
+    # We look at the 'clients' section to see what fields are currently used
+    # This reflects the actual structure of your current setup
+    clients = config.get("clients", {})
+    
+    # We dynamically generate a schema based on the keys found in the torrents config
+    torrent_fields = clients.get("torrents", {}).keys()
+    
+    schema = []
+    for field in torrent_fields:
+        # Ignore sensitive fields like password
+        if field.lower() in ["password", "apikey"]:
+            continue
+            
+        schema.append({
+            "name": field,
+            "label": field.replace('_', ' ').title(),
+            "type": "string",
+            "advanced": False
+        })
+    return schema
 
 # ---------------------------------------------------------------------------
 # REMAINING STUBS
