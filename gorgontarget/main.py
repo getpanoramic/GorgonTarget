@@ -547,106 +547,62 @@ async def get_health_proxy(api_key: str = Depends(get_medusa_key)):
     status = "ok" if res.status_code == 200 else "error"
     return [{"source": "Medusa", "type": status, "message": "Backend operational"}]
 
-@app.get("/api/v3/diskspace")
-async def get_disk_space(api_key: str = Depends(get_medusa_key)):
-    res = await async_client.get("/api/v2/config", headers=medusa_headers(api_key))
-    if res.status_code != 200:
-        return []
-    
-    config = res.json()
-    disk_data = config.get("diskSpace", {})
-    records = []
+# ---------------------------------------------------------------------------
+# DYNAMIC SCHEMA TRANSLATORS
+# ---------------------------------------------------------------------------
 
-    # Map rootDir list
-    for root in disk_data.get("rootDir", []):
-        records.append({
-            "path": root.get("location"),
-            "label": root.get("type"),
-            "freeSpace": parse_medusa_size(root.get("freeSpace")),
-            "totalSpace": 0 # Medusa doesn't provide total, Sonarr UI handles this gracefully
-        })
-        
-    return records
+@app.get("/api/v3/diskspace")
+async def get_diskspace(api_key: str = Depends(get_medusa_key)):
+    # Using your provided config endpoint
+    res = await async_client.get("/api/v2/config", headers=medusa_headers(api_key))
+    data = res.json() if res.status_code == 200 else {}
+    
+    # Translate Medusa 'diskSpace' to Sonarr 'DiskSpace'
+    return [{
+        "path": d.get("location"),
+        "label": d.get("type"),
+        "freeSpace": parse_size_to_bytes(d.get("freeSpace", "0 GB")),
+        "totalSpace": 0
+    } for d in data.get("diskSpace", {}).get("rootDir", [])]
 
 @app.get("/api/v3/downloadclient")
 async def get_download_clients(api_key: str = Depends(get_medusa_key)):
-    res = await async_client.get("/api/v2/config/downloaders", headers=medusa_headers(api_key))
-    if res.status_code != 200: return []
+    # Medusa config contains downloader info
+    res = await async_client.get("/api/v2/config", headers=medusa_headers(api_key))
+    data = res.json() if res.status_code == 200 else {}
     
-    # Transform Medusa format to Sonarr format
-    return [{
-        "id": i,
-        "name": d.get("name", "Unknown"),
-        "enable": d.get("enabled", True),
-        "protocol": "torrent",
-        "implementation": d.get("type", "generic")
-    } for i, d in enumerate(res.json())]
+    # Extracting downloaders; adjust the key based on your specific Medusa config structure
+    clients = data.get("downloaders", []) 
+    return [{"id": i, "name": c.get("name", "Client"), "enable": True} for i, c in enumerate(clients)]
 
 @app.get("/api/v3/indexer")
 async def get_indexers(api_key: str = Depends(get_medusa_key)):
-    res = await async_client.get("/api/v2/config/indexers", headers=medusa_headers(api_key))
-    if res.status_code != 200: 
-        return []
+    # Using your provided providers endpoint
+    res = await async_client.get("/api/v2/providers", headers=medusa_headers(api_key))
+    data = res.json() if res.status_code == 200 else []
     
-    data = res.json()
-    # Handle the case where Medusa returns a list of strings
-    if not isinstance(data, list):
-        return []
-
-    indexers = []
-    for i, item in enumerate(data):
-        # Determine name based on whether item is a dict or a plain string
-        name = item.get("name", "Indexer") if isinstance(item, dict) else str(item)
-        
-        indexers.append({
-            "id": i + 1,
-            "name": name,
-            "enableRss": True,
-            "enableAutomaticSearch": True,
-            "enableInteractiveSearch": True
-        })
-    return indexers
+    return [{"id": i, "name": idx.get("name", "Indexer"), "enableRss": True} for i, idx in enumerate(data)]
 
 @app.get("/api/v3/log")
-async def get_logs(
-    page: int = 1, 
-    pageSize: int = 20, 
-    sortKey: str = "time",
-    api_key: str = Depends(get_medusa_key)
-):
-    """
-    Retrieves logs from Medusa using the specific v2/log endpoint.
-    """
-    # Map Sonarr/Prismarr pagination/filtering to Medusa's expected params
-    params = {
-        "limit": 1000,           # Medusa limit
-        "period": "one_day",     # Map as needed
-        "level": "INFO"          # Default level
-    }
+async def get_logs(page: int = 1, pageSize: int = 100, api_key: str = Depends(get_medusa_key)):
+    # Using your specific log endpoint with raw=true
+    res = await async_client.get("/api/v2/log", params={"raw": "true", "limit": 1000}, headers=medusa_headers(api_key))
+    logs = res.json() if res.status_code == 200 else []
     
+    return {
+        "page": page,
+        "pageSize": pageSize,
+        "totalRecords": len(logs),
+        "records": [{"time": l.get("time"), "level": l.get("level"), "message": l.get("message")} for l in logs]
+    }
+
+def parse_size_to_bytes(size_str):
     try:
-        res = await async_client.get("/api/v2/log", params=params, headers=medusa_headers(api_key))
-        if res.status_code != 200:
-            return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
-            
-        logs = res.json()
-        
-        # Transform Medusa response to Sonarr/Prismarr expected format
-        records = [{
-            "time": log.get("time", "2026-01-01T00:00:00Z"),
-            "level": log.get("level", "info"),
-            "message": log.get("message", ""),
-            "logger": "Medusa"
-        } for log in logs]
-        
-        return {
-            "page": page,
-            "pageSize": pageSize,
-            "totalRecords": len(records),
-            "records": records
-        }
-    except Exception:
-        return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
+        val, unit = size_str.split()
+        mult = {"GB": 10**9, "TB": 10**12, "MB": 10**6}
+        return int(float(val) * mult.get(unit, 1))
+    except:
+        return 0
 
 # ---------------------------------------------------------------------------
 # REMAINING STUBS
