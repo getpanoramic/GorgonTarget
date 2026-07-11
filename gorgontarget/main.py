@@ -608,21 +608,45 @@ async def get_indexers(api_key: str = Depends(get_medusa_key)):
     return indexers
 
 @app.get("/api/v3/log")
-async def get_logs(page: int = 1, pageSize: int = 20, api_key: str = Depends(get_medusa_key)):
-    res = await async_client.get("/api/v2/logs", headers=medusa_headers(api_key))
-    logs = res.json() if res.status_code == 200 else []
+async def get_logs(
+    page: int = 1, 
+    pageSize: int = 20, 
+    sortKey: str = "time",
+    api_key: str = Depends(get_medusa_key)
+):
+    """
+    Retrieves logs from Medusa using the specific v2/log endpoint.
+    """
+    # Map Sonarr/Prismarr pagination/filtering to Medusa's expected params
+    params = {
+        "limit": 1000,           # Medusa limit
+        "period": "one_day",     # Map as needed
+        "level": "INFO"          # Default level
+    }
     
-    return {
-        "page": page,
-        "pageSize": pageSize,
-        "totalRecords": len(logs),
-        "records": [{
+    try:
+        res = await async_client.get("/api/v2/log", params=params, headers=medusa_headers(api_key))
+        if res.status_code != 200:
+            return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
+            
+        logs = res.json()
+        
+        # Transform Medusa response to Sonarr/Prismarr expected format
+        records = [{
             "time": log.get("time", "2026-01-01T00:00:00Z"),
             "level": log.get("level", "info"),
             "message": log.get("message", ""),
             "logger": "Medusa"
         } for log in logs]
-    }
+        
+        return {
+            "page": page,
+            "pageSize": pageSize,
+            "totalRecords": len(records),
+            "records": records
+        }
+    except Exception:
+        return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
 
 # ---------------------------------------------------------------------------
 # REMAINING STUBS
