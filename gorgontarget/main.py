@@ -3,12 +3,19 @@ import urllib.parse
 import sys
 import json
 import re
+import time
+from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, Header, HTTPException, Query, status, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.types import ASGIApp, Scope, Receive, Send
 import httpx
+
+SERIES_ID_MAP = {}
+
+# ADD THIS: Persistent registry for command tracking
+COMMAND_REGISTRY = {}
 
 # ---------------------------------------------------------------------------
 # REFINED PATH & CASE-INSENSITIVE ROUTING MIDDLEWARE (CLEAN LOGS)
@@ -486,26 +493,55 @@ class SonarrCommand(BaseModel):
     name: str
     seriesId: Optional[int] = None
 
+# ---------------------------------------------------------------------------
+# REPLACED: SMART COMMAND PROCESSING
+# ---------------------------------------------------------------------------
+
 @app.post("/api/v3/command")
 async def execute_command(command: SonarrCommand, api_key: str = Depends(get_medusa_key)):
+    # Generate a unique integer ID
+    command_id = abs(hash(f"{command.name}-{command.seriesId}-{time.time()}")) % 10000
+    
+    # Set initial state
+    COMMAND_REGISTRY[command_id] = {
+        "id": command_id,
+        "name": command.name,
+        "state": "queued",
+        "startedOn": datetime.utcnow().isoformat() + "Z"
+    }
+
+    # Dispatch to Medusa in the background without blocking the UI
     headers = medusa_headers(api_key)
     
-    # Mapping Sonarr commands to Medusa internal actions
-    if command.name == "RefreshSeries" and command.seriesId:
-        await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-update", headers=headers)
-    elif command.name == "RescanSeries" and command.seriesId:
-        await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-search", headers=headers)
-    elif command.name == "SeriesSearch" and command.seriesId:
-        await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-search", headers=headers)
-    elif command.name == "CheckForUpdates":
-        # New: Triggering the system update via Medusa operation API
-        await async_client.post("/api/v2/system/operation", json={"command": "check_update"}, headers=headers)
+    # We use a non-blocking approach to trigger Medusa
+    try:
+        if command.name == "RefreshSeries" and command.seriesId:
+            await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-update", headers=headers)
+        elif command.name in ["RescanSeries", "SeriesSearch"] and command.seriesId:
+            await async_client.post(f"/api/v2/series/{command.seriesId}/actions/force-search", headers=headers)
+        elif command.name == "CheckForUpdates":
+            await async_client.post("/api/v2/system/operation", json={"command": "check_update"}, headers=headers)
         
-    return {"id": 1000, "name": command.name, "state": "completed"}
+        COMMAND_REGISTRY[command_id]["state"] = "completed"
+    except Exception as e:
+        log_debug(f"Command Execution Failed: {str(e)}")
+        COMMAND_REGISTRY[command_id]["state"] = "failed"
+
+    return COMMAND_REGISTRY[command_id]
+
+@app.get("/api/v3/command")
+async def get_all_commands():
+    # Return the full list for Prismarr's history tracking
+    return list(COMMAND_REGISTRY.values())
 
 @app.get("/api/v3/command/{command_id}")
-async def get_command_status(command_id: int, api_key: str = Depends(get_medusa_key)):
-    return {"id": command_id, "state": "completed"}
+async def get_command_status(command_id: int):
+    # Retrieve specific command state
+    return COMMAND_REGISTRY.get(command_id, {
+        "id": command_id, 
+        "name": "Unknown", 
+        "state": "completed"
+    })
 
 # ---------------------------------------------------------------------------
 # UPDATED FUNCTIONAL ENDPOINTS
