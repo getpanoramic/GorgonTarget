@@ -81,7 +81,8 @@ class MedusaTranslator:
     def to_sonarr_episode(cls, medusa_ep: Dict[str, Any], series_id: int) -> SonarrEpisode:
         status = str(medusa_ep.get("status", "")).lower()
         has_file = status in ["downloaded", "snatched"]
-        ep_id = int(medusa_ep.get("id", 0))
+        # Use the robust extraction method to handle nested dictionaries
+        ep_id = cls.extract_clean_integer_id(medusa_ep)
 
         episode = SonarrEpisode(
             id=ep_id,
