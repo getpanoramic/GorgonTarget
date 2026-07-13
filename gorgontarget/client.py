@@ -52,7 +52,14 @@ class MedusaClient:
         return []
 
     async def get_series_by_id(self, series_id: int) -> Optional[Dict[str, Any]]:
-        res = await self.client.get(f"/api/v2/series/{series_id}", headers=self.headers)
+        # Attempt to retrieve the slug from cache
+        slug = await series_map_cache.get(f"map_{series_id}")
+        if not slug:
+            # If mapping is missing, refresh cache by fetching all series
+            await self.get_all_series()
+            slug = await series_map_cache.get(f"map_{series_id}") or series_id
+
+        res = await self.client.get(f"/api/v2/series/{slug}", headers=self.headers)
         if res.status_code == 200:
             return res.json()
         return None
