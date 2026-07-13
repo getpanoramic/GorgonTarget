@@ -52,6 +52,9 @@ class MedusaTranslator:
 
     @classmethod
     def to_sonarr_series(cls, medusa_show: Dict[str, Any]) -> SonarrSeries:
+        # DEBUG: Log the raw show data to inspect structure
+        print(f"[DEBUG] to_sonarr_series: medusa_show={medusa_show}", file=sys.stderr, flush=True)
+        
         ids = medusa_show.get("ids", {})
         medusa_id = cls.extract_clean_integer_id(medusa_show)
         title = medusa_show.get("title", f"Series {medusa_id}")

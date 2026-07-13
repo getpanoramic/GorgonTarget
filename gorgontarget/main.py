@@ -433,8 +433,14 @@ async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: 
 async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
     try:
         res = await async_client.get("/api/v2/schedule", headers=medusa_headers(api_key))
-        if res.status_code != 200: return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
-        combined = res.json().get("missed", []) + res.json().get("coming", [])
+        if res.status_code != 200: 
+            log_debug(f"Wanted missing fetch failed: {res.status_code}")
+            return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
+        
+        data = res.json()
+        log_debug(f"Wanted missing raw data: {data}")
+        combined = data.get("missed", []) + data.get("coming", [])
+        
         records = [{
             "id": int(item.get("id", idx + 1000)),
             "seriesId": int(item.get("seriesId", 0)),
@@ -445,8 +451,10 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
             "series": {"title": item.get("show_name", "Unknown")},
             "monitored": True
         } for idx, item in enumerate(combined)]
+        
         return {"page": 1, "pageSize": len(records) or 20, "totalRecords": len(records), "records": records}
-    except Exception:
+    except Exception as e:
+        log_debug(f"Wanted missing exception: {str(e)}")
         return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
 
 @app.get("/api/v3/queue")
