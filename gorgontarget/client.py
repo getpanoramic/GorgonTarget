@@ -95,6 +95,24 @@ class MedusaClient:
             return res.json()
         return []
 
+    async def get_logs(self, limit: int = 1000) -> List[Dict[str, Any]]:
+        res = await self.client.get("/api/v2/log", params={"raw": "true", "limit": limit}, headers=self.headers)
+        if res.status_code == 200:
+            try:
+                match = re.search(r'\[.*\]', res.text)
+                return json.loads(match.group(0)) if match else []
+            except Exception:
+                pass
+        return []
+
+    async def get_download_clients(self) -> Dict[str, Any]:
+        res = await self.client.get("/api/v2/config", headers=self.headers)
+        return res.json().get("clients", {}) if res.status_code == 200 else {}
+
+    async def get_indexers(self) -> List[Dict[str, Any]]:
+        res = await self.client.get("/api/v2/providers", headers=self.headers)
+        return res.json() if res.status_code == 200 else []
+
     async def execute_command(self, cmd_name: str, series_id: Optional[int] = None) -> bool:
         if cmd_name == "RefreshSeries" and series_id:
             res = await self.client.post(f"/api/v2/series/{series_id}/actions/force-update", headers=self.headers)

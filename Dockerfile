@@ -32,7 +32,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
 RUN adduser -D appuser
 USER appuser
 
-# Standardized to 8000
+# Standardized to 8888
 EXPOSE 8888
 
 # Update the Uvicorn path to point to the package

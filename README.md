@@ -29,7 +29,7 @@ services:
     image: ghcr.io/getpanoramic/gorgontarget:latest
     container_name: gorgontarget
     ports:
-      - "8000:8000"
+      - "8888:8888"
     environment:
       - MEDUSA_URL=http://your-medusa-ip:8081
       - MEDUSA_API_KEY=your_actual_medusa_api_key
