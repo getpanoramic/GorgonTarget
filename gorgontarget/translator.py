@@ -24,6 +24,17 @@ class MedusaTranslator:
             pass
         return 0
 
+    @staticmethod
+    def parse_size_to_bytes(size_str: str) -> int:
+        try:
+            if not size_str: return 0
+            val, unit = size_str.split()
+            val = float(val)
+            multipliers = {"GB": 10**9, "TB": 10**12, "MB": 10**6}
+            return int(val * multipliers.get(unit.upper(), 1))
+        except (ValueError, AttributeError):
+            return 0
+
     @classmethod
     def to_sonarr_series(cls, medusa_show: Dict[str, Any]) -> SonarrSeries:
         ids = medusa_show.get("ids", {})

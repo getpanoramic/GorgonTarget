@@ -324,34 +324,18 @@ async def get_episodes(
 ):
     target_id = seriesId or seriesid
     if not target_id: return []
-    if not SERIES_ID_MAP: await core_all_series(api_key)
-
-    medusa_id = SERIES_ID_MAP.get(target_id, target_id)
-    try:
-        res = await async_client.get(f"/api/v2/series/{medusa_id}/episodes", headers=medusa_headers(api_key))
-        if res.status_code != 200: return []
-
-        translated_episodes = []
-        for ep in res.json():
-            status_str = str(ep.get("status", "")).lower()
-            has_file = status_str in ["downloaded", "snatched"]
-            episode = {
-                "id": int(ep.get("id", 0)),
-                "seriesId": int(target_id),
-                "episodeFileId": int(ep.get("id", 0)) if has_file else 0,
-                "seasonNumber": int(ep.get("season", 0)),
-                "episodeNumber": int(ep.get("episode", ep.get("number", 0))),
-                "title": ep.get("title", ""),
-                "overview": ep.get("overview", ""),
-                "monitored": True,
-                "hasFile": has_file
-            }
-            if includeEpisodeFile and has_file:
-                episode["episodeFile"] = {"id": int(ep.get("id", 0)), "seriesId": int(target_id), "size": 0}
-            translated_episodes.append(episode)
-        return translated_episodes
-    except Exception:
-        return []
+    
+    client = MedusaClient(api_key)
+    medusa_episodes = await client.get_episodes(target_id)
+    
+    translated_episodes = []
+    for ep in medusa_episodes:
+        episode = MedusaTranslator.to_sonarr_episode(ep, target_id).dict()
+        if not includeEpisodeFile:
+            episode.pop("episodeFile", None)
+        translated_episodes.append(episode)
+        
+    return translated_episodes
 
 @app.get("/api/v3/episodefile")
 async def get_episode_files(seriesId: Optional[int] = Query(None), seriesid: Optional[int] = Query(None)):
@@ -537,7 +521,7 @@ async def get_diskspace(api_key: str = Depends(get_medusa_key)):
     return [{
         "path": d.get("location"),
         "label": d.get("type"),
-        "freeSpace": parse_size_to_bytes(d.get("freeSpace", "0 GB")),
+        "freeSpace": MedusaTranslator.parse_size_to_bytes(d.get("freeSpace", "0 GB")),
         "totalSpace": 0
     } for d in data.get("diskSpace", {}).get("rootDir", [])]
 

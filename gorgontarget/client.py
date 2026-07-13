@@ -82,3 +82,27 @@ class MedusaClient:
         if res.status_code == 200:
             return res.json()
         return []
+
+    async def get_calendar(self) -> Dict[str, List[Dict[str, Any]]]:
+        res = await self.client.get("/api/v2/schedule", headers=self.headers)
+        if res.status_code == 200:
+            return res.json()
+        return {"coming": [], "missed": []}
+
+    async def get_history(self) -> List[Dict[str, Any]]:
+        res = await self.client.get("/api/v2/history", headers=self.headers)
+        if res.status_code == 200:
+            return res.json()
+        return []
+
+    async def execute_command(self, cmd_name: str, series_id: Optional[int] = None) -> bool:
+        if cmd_name == "RefreshSeries" and series_id:
+            res = await self.client.post(f"/api/v2/series/{series_id}/actions/force-update", headers=self.headers)
+            return res.status_code == 200
+        elif cmd_name in ["RescanSeries", "SeriesSearch"] and series_id:
+            res = await self.client.post(f"/api/v2/series/{series_id}/actions/force-search", headers=self.headers)
+            return res.status_code == 200
+        elif cmd_name == "CheckForUpdates":
+            res = await self.client.post("/api/v2/system/operation", json={"command": "check_update"}, headers=self.headers)
+            return res.status_code == 200
+        return False
