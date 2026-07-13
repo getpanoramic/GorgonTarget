@@ -141,3 +141,7 @@ class MedusaClient:
             res = await self.client.post("/api/v2/system/operation", json={"command": "check_update"}, headers=self.headers)
             return res.status_code == 200
         return False
+
+    async def get_indexers(self) -> List[Dict[str, Any]]:
+        res = await self.client.get("/api/v2/providers", headers=self.headers)
+        return res.json() if res.status_code == 200 else []
