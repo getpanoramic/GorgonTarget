@@ -581,10 +581,10 @@ async def get_indexers(api_key: str = Depends(get_medusa_key)):
 @app.get("/api/v3/log")
 async def get_logs(page: int = 1, pageSize: int = 100, api_key: str = Depends(get_medusa_key)):
     res = await async_client.get("/api/v2/log", params={"raw": "true", "limit": 1000}, headers=medusa_headers(api_key))
-    
+
     if res.status_code != 200:
         return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
-    
+
     try:
         # Regex to extract the first valid JSON array or object from the dirty response
         match = re.search(r'\[.*\]', res.text)
@@ -592,7 +592,7 @@ async def get_logs(page: int = 1, pageSize: int = 100, api_key: str = Depends(ge
             logs = json.loads(match.group(0))
         else:
             logs = []
-            
+
         return {
             "page": page,
             "pageSize": pageSize,
@@ -603,6 +603,11 @@ async def get_logs(page: int = 1, pageSize: int = 100, api_key: str = Depends(ge
         # Silently fail for logs to prevent UI crashes
         return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
 
+@app.get("/api/v3/log/file")
+async def get_log_file(api_key: str = Depends(get_medusa_key)):
+    client = MedusaClient(api_key)
+    log_content = await client.get_raw_logs()
+    return log_content
 def parse_size_to_bytes(size_str):
     try:
         val, unit = size_str.split()

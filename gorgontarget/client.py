@@ -84,7 +84,13 @@ class MedusaClient:
         return None
 
     async def get_episodes(self, target_id: int) -> List[Dict[str, Any]]:
-        slug = await series_map_cache.get(f"map_{target_id}") or target_id
+        # Attempt to retrieve the slug from cache
+        slug = await series_map_cache.get(f"map_{target_id}")
+        if not slug:
+            # If mapping is missing, refresh cache by fetching all series
+            await self.get_all_series()
+            slug = await series_map_cache.get(f"map_{target_id}") or target_id
+
         res = await self.client.get(f"/api/v2/series/{slug}/episodes", headers=self.headers)
         if res.status_code == 200:
             return res.json()
@@ -111,6 +117,10 @@ class MedusaClient:
             except Exception:
                 pass
         return []
+
+    async def get_raw_logs(self) -> str:
+        res = await self.client.get("/api/v2/log", params={"raw": "true"}, headers=self.headers)
+        return res.text if res.status_code == 200 else ""
 
     async def get_download_clients(self) -> Dict[str, Any]:
         res = await self.client.get("/api/v2/config", headers=self.headers)
