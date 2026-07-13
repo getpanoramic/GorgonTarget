@@ -95,18 +95,14 @@ class MedusaClient:
     async def get_episodes(self, target_id: int) -> List[Dict[str, Any]]:
         # Attempt to retrieve the slug from cache
         slug = await series_map_cache.get(f"map_{target_id}")
-        print(f"[DEBUG] get_episodes: target_id={target_id}, cached_slug={slug}", file=sys.stderr, flush=True)
-
+        
         # If mapping is missing, attempt to refresh cache
         if not slug:
-            print(f"[DEBUG] get_episodes: Mapping missing, refreshing cache...", file=sys.stderr, flush=True)
             await self.get_all_series()
             slug = await series_map_cache.get(f"map_{target_id}")
-            print(f"[DEBUG] get_episodes: After refresh, cached_slug={slug}", file=sys.stderr, flush=True)
 
         # If still no slug, try fetching series details to construct it properly
         if not slug:
-            print(f"[DEBUG] get_episodes: Still no slug, fetching series details for target_id={target_id}", file=sys.stderr, flush=True)
             series_data = await self.get_series_by_id(target_id)
             if series_data:
                 # Correctly construct indexer+id
@@ -118,63 +114,28 @@ class MedusaClient:
                 else:
                     # Fallback to numeric if somehow missing (still likely to fail, but safer)
                     slug = str(target_id)
-                print(f"[DEBUG] get_episodes: Constructed slug={slug} from series data", file=sys.stderr, flush=True)
             else:
                 slug = str(target_id)
-                print(f"[DEBUG] get_episodes: Could not fetch series data, using raw target_id={slug}", file=sys.stderr, flush=True)
 
-        # Make the API call using the resolved slug
+        # Make the API call using the resolved slug and increase limit to get all episodes
         url = f"/api/v2/series/{slug}/episodes"
-        print(f"[DEBUG] get_episodes: Calling API URL={url}", file=sys.stderr, flush=True)
-        res = await self.client.get(url, headers=self.headers)
+        res = await self.client.get(url, params={"limit": 1000}, headers=self.headers)
 
-        print(f"[DEBUG] get_episodes: API status={res.status_code}", file=sys.stderr, flush=True)
         if res.status_code == 200:
             return res.json()
 
-        print(f"[DEBUG] get_episodes: Failed API call, response={res.text[:100]}", file=sys.stderr, flush=True)
         return []
-
-    async def get_calendar(self) -> Dict[str, List[Dict[str, Any]]]:
-        res = await self.client.get("/api/v2/schedule", headers=self.headers)
-        if res.status_code == 200:
-            return res.json()
-        return {"coming": [], "missed": []}
-
-    async def get_history(self) -> List[Dict[str, Any]]:
-        res = await self.client.get("/api/v2/history", headers=self.headers)
-        if res.status_code == 200:
-            return res.json()
-        return []
-
-    async def get_logs(self, limit: int = 1000) -> List[Dict[str, Any]]:
-        res = await self.client.get("/api/v2/log", params={"raw": "true", "limit": limit}, headers=self.headers)
-        if res.status_code == 200:
-            try:
-                match = re.search(r'\[.*\]', res.text)
-                return json.loads(match.group(0)) if match else []
-            except Exception:
-                pass
-        return []
-
-    async def get_raw_logs(self) -> str:
-        res = await self.client.get("/api/v2/log", params={"raw": "true"}, headers=self.headers)
-        return res.text if res.status_code == 200 else ""
-
-    async def get_download_clients(self) -> Dict[str, Any]:
-        res = await self.client.get("/api/v2/config", headers=self.headers)
-        return res.json().get("clients", {}) if res.status_code == 200 else {}
-
-    async def get_indexers(self) -> List[Dict[str, Any]]:
-        res = await self.client.get("/api/v2/providers", headers=self.headers)
-        return res.json() if res.status_code == 200 else []
 
     async def execute_command(self, cmd_name: str, series_id: Optional[int] = None) -> bool:
-        if cmd_name == "RefreshSeries" and series_id:
-            res = await self.client.post(f"/api/v2/series/{series_id}/actions/force-update", headers=self.headers)
+        slug = None
+        if series_id:
+            slug = await series_map_cache.get(f"map_{series_id}") or str(series_id)
+
+        if cmd_name == "RefreshSeries" and slug:
+            res = await self.client.post(f"/api/v2/series/{slug}/actions/force-update", headers=self.headers)
             return res.status_code == 200
-        elif cmd_name in ["RescanSeries", "SeriesSearch"] and series_id:
-            res = await self.client.post(f"/api/v2/series/{series_id}/actions/force-search", headers=self.headers)
+        elif cmd_name in ["RescanSeries", "SeriesSearch"] and slug:
+            res = await self.client.post(f"/api/v2/series/{slug}/actions/force-search", headers=self.headers)
             return res.status_code == 200
         elif cmd_name == "CheckForUpdates":
             res = await self.client.post("/api/v2/system/operation", json={"command": "check_update"}, headers=self.headers)

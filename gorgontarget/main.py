@@ -185,8 +185,11 @@ async def get_media_cover(series_id: str, asset_file: str, api_key: str = Depend
     elif "fanart" in asset_lower:
         medusa_asset_type = "fanart"
 
-    target_url = f"/api/v2/series/{series_id}/images/{medusa_asset_type}"
-    log_debug(f"Proxying visual cover asset: {medusa_asset_type} for series {series_id}")
+    # Resolve the series slug from the cache
+    slug = await series_map_cache.get(f"map_{series_id}") or series_id
+
+    target_url = f"/api/v2/series/{slug}/asset/{medusa_asset_type}"
+    log_debug(f"Proxying visual cover asset: {medusa_asset_type} for series {series_id} (slug: {slug})")
     
     try:
         response = await async_client.get(target_url, headers=medusa_headers(api_key))
