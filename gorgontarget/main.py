@@ -38,14 +38,11 @@ class CaseInsensitiveAPIMiddleware:
             # Print simplified request line instead of heavy header dumps
             print(f"[GorgonTarget] {method} {path}", file=sys.stderr, flush=True)
             
-            if path.endswith("/") and len(path) > 1:
-                path = path.rstrip("/")
-                
-            if path.startswith("/api/") or path.startswith("/api"):
-                # Ensure the path is just normalized, not re-prefixed
-                scope["path"] = path.lower()
-            else:
-                scope["path"] = path
+            # Normalize path (lowercase it)
+            normalized_path = path.lower()
+            if normalized_path.endswith("/") and len(normalized_path) > 1:
+                normalized_path = normalized_path.rstrip("/")
+            scope["path"] = normalized_path
 
         await self.app(scope, receive, send)
 
@@ -67,9 +64,9 @@ def log_debug(message: str):
 # Helper function to generate standard image links for Sonarr clients
 def build_sonarr_images(series_id: int) -> List[Dict[str, str]]:
     return [
-        {"coverType": "poster", "url": f"/v3/mediacover/{series_id}/poster.jpg"},
-        {"coverType": "banner", "url": f"/v3/mediacover/{series_id}/banner.jpg"},
-        {"coverType": "fanart", "url": f"/v3/mediacover/{series_id}/fanart.jpg"}
+        {"coverType": "poster", "url": f"/api/v3/mediacover/{series_id}/poster.jpg"},
+        {"coverType": "banner", "url": f"/api/v3/mediacover/{series_id}/banner.jpg"},
+        {"coverType": "fanart", "url": f"/api/v3/mediacover/{series_id}/fanart.jpg"}
     ]
 
 def parse_medusa_size(size_str: str) -> int:
