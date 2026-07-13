@@ -41,7 +41,8 @@ class CaseInsensitiveAPIMiddleware:
             if path.endswith("/") and len(path) > 1:
                 path = path.rstrip("/")
                 
-            if path.startswith("/api"):
+            if path.startswith("/api/") or path.startswith("/api"):
+                # Ensure the path is just normalized, not re-prefixed
                 scope["path"] = path.lower()
             else:
                 scope["path"] = path
