@@ -172,6 +172,52 @@ async def core_all_series(api_key: str):
 # ---------------------------------------------------------------------------
 # MEDIA COVER ASSET PROXY TUNNEL
 # ---------------------------------------------------------------------------
+@app.get("/api/v3/release")
+async def get_releases(episodeId: int = Query(...), api_key: str = Depends(get_medusa_key)):
+    client = MedusaClient(api_key)
+    
+    # 1. Fetch all series to search for the episode
+    shows = await client.get_all_series()
+    
+    # 2. Find the series/episode
+    found_ep = None
+    for show in shows:
+        series_id = extract_clean_integer_id(show)
+        episodes = await client.get_episodes(series_id)
+        for ep in episodes:
+            translated = MedusaTranslator.to_sonarr_episode(ep, series_id)
+            if translated.id == episodeId:
+                found_ep = (show, translated)
+                break
+        if found_ep: break
+    
+    if not found_ep:
+        return []
+    
+    show, ep = found_ep
+    slug = await series_map_cache.get(f"map_{extract_clean_integer_id(show)}") or str(extract_clean_integer_id(show))
+    
+    # 3. Dynamic search across all providers
+    providers = await client.get_indexers()
+    releases = []
+    for provider in providers:
+        p_name = provider.get("name")
+        if not p_name: continue
+        
+        search_url = f"/api/v2/providers/{p_name}/results?showslug={slug}&season={ep.seasonNumber}&episode={ep.episodeNumber}&limit=100&page=1"
+        res = await async_client.get(search_url, headers=medusa_headers(api_key))
+        
+        if res.status_code == 200:
+            for item in res.json():
+                releases.append({
+                    "guid": item.get("hash", ""),
+                    "title": item.get("name", "Unknown Release"),
+                    "size": parse_medusa_size(item.get("size", "0 B")),
+                    "indexerId": 1,
+                    "releaseWeight": 1
+                })
+    return releases
+
 @app.get("/api/v3/mediacover/{series_id}/{asset_file}")
 async def get_media_cover(series_id: str, asset_file: str, api_key: str = Depends(get_medusa_key)):
     """
@@ -718,7 +764,6 @@ async def get_download_client_schema(api_key: str = Depends(get_medusa_key)):
 @app.get("/api/v3/config/ui")
 @app.get("/api/v3/config/host")
 @app.get("/api/v3/ping")
-@app.get("/api/v3/release")
 @app.get("/api/v3/manualimport")
 @app.get("/api/v3/notification")
 @app.get("/api/v3/importlist")
