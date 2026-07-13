@@ -62,6 +62,24 @@ class MedusaTranslator:
             path = f"/tv/{safe_folder}"
         else:
             path = str(raw_path)
+        
+        # Populate images using our builder
+        from .main import build_sonarr_images
+        
+        # Populate seasons from Medusa data
+        seasons = []
+        for s in medusa_show.get("seasons", []):
+            seasons.append({
+                "seasonNumber": int(s.get("season", 0)),
+                "monitored": True,
+                "statistics": {
+                    "episodeFileCount": 0,
+                    "episodeCount": int(s.get("episodes", 0)),
+                    "totalEpisodeCount": int(s.get("episodes", 0)),
+                    "sizeOnDisk": 0,
+                    "percentOfEpisodes": 100
+                }
+            })
 
         return SonarrSeries(
             id=medusa_id,
@@ -74,7 +92,9 @@ class MedusaTranslator:
             overview=medusa_show.get("overview", ""),
             year=cls.extract_clean_year(medusa_show),
             path=path,
-            monitored=not medusa_show.get("paused", False)
+            monitored=not medusa_show.get("paused", False),
+            images=build_sonarr_images(medusa_id),
+            seasons=seasons
         )
 
     @classmethod
