@@ -45,24 +45,17 @@ class MedusaClient:
             # Update cache map for episode lookups
             for show in shows:
                 m_id = MedusaTranslator.extract_clean_integer_id(show)
-                # Ensure we handle nested IDs structure correctly
-                ids = show.get("ids", {})
                 
-                # DEBUG: Log the show structure to understand why extraction is failing
-                print(f"[DEBUG] get_all_series: show_id={show.get('id')}, ids={ids}, default_indexer={show.get('default_indexer')}", file=sys.stderr, flush=True)
-
-                indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
-                val = ids.get(indexer)
+                # The API provides a slug directly in the 'id' field of the response
+                show_id_info = show.get("id", {})
+                slug = show_id_info.get("slug")
                 
-                # If indexer+id is not possible, try to find *any* indexer id
-                if not val:
-                    for k in ["tvdb", "tvmaze", "imdb"]:
-                        if ids.get(k):
-                            indexer = k
-                            val = ids.get(k)
-                            break
-                            
-                slug = f"{indexer}{val}" if val else str(m_id)
+                if not slug:
+                    # Fallback if slug is missing
+                    indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
+                    val = show.get("ids", {}).get(indexer)
+                    slug = f"{indexer}{val}" if val else str(m_id)
+                
                 await series_map_cache.set(f"map_{m_id}", slug)
                 print(f"[DEBUG] get_all_series: Mapping m_id={m_id} to slug={slug}", file=sys.stderr, flush=True)
             return shows
