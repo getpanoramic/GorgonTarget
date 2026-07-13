@@ -54,7 +54,8 @@ class CaseInsensitiveAPIMiddleware:
 app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.6.0")
 app.add_middleware(CaseInsensitiveAPIMiddleware)
 
-async_client = httpx.AsyncClient(base_url=settings.medusa_url, timeout=settings.timeout)
+MEDUSA_URL = settings.medusa_url
+async_client = httpx.AsyncClient(base_url=MEDUSA_URL, timeout=settings.timeout)
 
 # Maps Sonarr proxy IDs -> real Medusa IDs
 SERIES_ID_MAP = {}

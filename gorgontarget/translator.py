@@ -53,22 +53,10 @@ class MedusaTranslator:
 
     @classmethod
     def to_sonarr_series(cls, medusa_show: Dict[str, Any]) -> SonarrSeries:
-        # DEBUG: Log the raw show data to inspect structure
-        print(f"[DEBUG] to_sonarr_series: medusa_show={medusa_show}", file=sys.stderr, flush=True)
-        
         ids = medusa_show.get("ids", {})
+        # Use Medusa's 'id.slug' if available as a robust ID, fallback to cleaner extraction
         medusa_id = cls.extract_clean_integer_id(medusa_show)
         title = medusa_show.get("title", f"Series {medusa_id}")
-        
-        raw_path = medusa_show.get("path", "")
-        if not raw_path or raw_path == "/tv":
-            safe_folder = title.replace("/", "_").replace("\\", "_")
-            path = f"/tv/{safe_folder}"
-        else:
-            path = str(raw_path)
-        
-        # Populate images using our builder
-        from .main import build_sonarr_images
         
         # Populate seasons from Medusa data
         seasons = []
@@ -95,9 +83,13 @@ class MedusaTranslator:
             status="continuing" if medusa_show.get("status") == "continuing" else "ended",
             overview=medusa_show.get("overview", ""),
             year=cls.extract_clean_year(medusa_show),
-            path=path,
+            path=medusa_show.get("config", {}).get("location", f"/tv/{title}"),
             monitored=not medusa_show.get("paused", False),
-            images=build_sonarr_images(medusa_id),
+            images=[
+                {"coverType": "poster", "url": f"/api/v3/mediacover/{medusa_id}/poster.jpg"},
+                {"coverType": "banner", "url": f"/api/v3/mediacover/{medusa_id}/banner.jpg"},
+                {"coverType": "fanart", "url": f"/api/v3/mediacover/{medusa_id}/fanart.jpg"}
+            ],
             seasons=seasons
         )
 
