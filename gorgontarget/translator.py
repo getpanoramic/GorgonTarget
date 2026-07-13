@@ -5,8 +5,23 @@ class MedusaTranslator:
     @staticmethod
     def extract_clean_integer_id(show_node: Dict[str, Any]) -> int:
         raw_id = show_node.get("id")
+        
+        # If it's a dict, try extracting a numeric ID dynamically
         if isinstance(raw_id, dict):
-            raw_id = raw_id.get("medusa") or raw_id.get("tvdb") or raw_id.get("tmdb")
+            # Try to find the first numeric value in the dict
+            for key, val in raw_id.items():
+                if key != 'slug': # 'slug' is not a numeric id
+                    try:
+                        return int(val)
+                    except (ValueError, TypeError):
+                        continue
+            
+            # If no numeric ID found, hash the slug to create a deterministic integer ID
+            slug = raw_id.get("slug")
+            if slug:
+                return hash(slug) % 1000000 # Use a safe modulo to keep it manageable
+            return 0
+            
         try:
             return int(raw_id)
         except (ValueError, TypeError):
