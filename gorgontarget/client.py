@@ -95,18 +95,24 @@ class MedusaClient:
             slug = await series_map_cache.get(f"map_{target_id}")
             print(f"[DEBUG] get_episodes: After refresh, cached_slug={slug}", file=sys.stderr, flush=True)
 
-        # If still no slug, try fetching series details to construct it
+        # If still no slug, try fetching series details to construct it properly
         if not slug:
             print(f"[DEBUG] get_episodes: Still no slug, fetching series details for target_id={target_id}", file=sys.stderr, flush=True)
             series_data = await self.get_series_by_id(target_id)
             if series_data:
+                # Correctly construct indexer+id
                 indexer = series_data.get("default_indexer") or series_data.get("indexer") or "tvdb"
+                # Use the ID value associated with that indexer
                 val = series_data.get("ids", {}).get(indexer)
-                slug = f"{indexer}{val}" if val else str(target_id)
+                if val:
+                    slug = f"{indexer}{val}"
+                else:
+                    # Fallback to numeric if somehow missing (still likely to fail, but safer)
+                    slug = str(target_id)
                 print(f"[DEBUG] get_episodes: Constructed slug={slug} from series data", file=sys.stderr, flush=True)
             else:
                 slug = str(target_id)
-                print(f"[DEBUG] get_episodes: Could not construct slug, using raw target_id={slug}", file=sys.stderr, flush=True)
+                print(f"[DEBUG] get_episodes: Could not fetch series data, using raw target_id={slug}", file=sys.stderr, flush=True)
 
         # Make the API call using the resolved slug
         url = f"/api/v2/series/{slug}/episodes"
