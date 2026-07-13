@@ -1,4 +1,5 @@
 from typing import Dict, Any
+import sys
 from .models import SonarrSeries, SonarrEpisode, SonarrSystemStatus
 
 class MedusaTranslator:
