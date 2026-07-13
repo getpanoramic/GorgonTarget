@@ -47,6 +47,10 @@ class MedusaClient:
                 m_id = MedusaTranslator.extract_clean_integer_id(show)
                 # Ensure we handle nested IDs structure correctly
                 ids = show.get("ids", {})
+                
+                # DEBUG: Log the show structure to understand why extraction is failing
+                print(f"[DEBUG] get_all_series: show_id={show.get('id')}, ids={ids}, default_indexer={show.get('default_indexer')}", file=sys.stderr, flush=True)
+
                 indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
                 val = ids.get(indexer)
                 
