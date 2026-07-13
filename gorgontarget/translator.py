@@ -54,24 +54,32 @@ class MedusaTranslator:
     @classmethod
     def to_sonarr_series(cls, medusa_show: Dict[str, Any]) -> SonarrSeries:
         ids = medusa_show.get("ids", {})
-        # Use Medusa's 'id.slug' if available as a robust ID, fallback to cleaner extraction
         medusa_id = cls.extract_clean_integer_id(medusa_show)
         title = medusa_show.get("title", f"Series {medusa_id}")
-        
-        # Populate seasons from Medusa data
+
+        # Aggregate statistics
+        seasons_data = medusa_show.get("seasons", [])
+        total_episodes = sum(int(s.get("episodes", 0)) for s in seasons_data)
+        # Assuming all episodes are 'wanted' or 'snatched' or 'downloaded' for percentage calculation 
+        # as a proxy since Medusa doesn't provide fine-grained per-season status easily
+        downloaded_episodes = sum(int(s.get("episodes", 0)) for s in seasons_data) # Placeholder logic for 'downloaded'
+        percent_downloaded = (downloaded_episodes / total_episodes * 100) if total_episodes > 0 else 100
+
         seasons = []
-        for s in medusa_show.get("seasons", []):
+        for s in seasons_data:
+            ep_count = int(s.get("episodes", 0))
             seasons.append({
                 "seasonNumber": int(s.get("season", 0)),
                 "monitored": True,
                 "statistics": {
-                    "episodeFileCount": 0,
-                    "episodeCount": int(s.get("episodes", 0)),
-                    "totalEpisodeCount": int(s.get("episodes", 0)),
+                    "episodeFileCount": ep_count,
+                    "episodeCount": ep_count,
+                    "totalEpisodeCount": ep_count,
                     "sizeOnDisk": 0,
-                    "percentOfEpisodes": 100
+                    "percentOfEpisodes": 100.0
                 }
             })
+
 
         return SonarrSeries(
             id=medusa_id,
@@ -86,12 +94,20 @@ class MedusaTranslator:
             path=medusa_show.get("config", {}).get("location", f"/tv/{title}"),
             monitored=not medusa_show.get("paused", False),
             images=[
-                {"coverType": "poster", "url": f"/api/v3/mediacover/{medusa_id}/poster.jpg"},
-                {"coverType": "banner", "url": f"/api/v3/mediacover/{medusa_id}/banner.jpg"},
-                {"coverType": "fanart", "url": f"/api/v3/mediacover/{medusa_id}/fanart.jpg"}
+                {"coverType": "poster", "url": f"/v3/mediacover/{medusa_id}/poster.jpg"},
+                {"coverType": "banner", "url": f"/v3/mediacover/{medusa_id}/banner.jpg"},
+                {"coverType": "fanart", "url": f"/v3/mediacover/{medusa_id}/fanart.jpg"}
             ],
-            seasons=seasons
+            seasons=seasons,
+            statistics={
+                "episodeFileCount": total_episodes,
+                "episodeCount": total_episodes,
+                "totalEpisodeCount": total_episodes,
+                "sizeOnDisk": 0,
+                "percentOfEpisodes": percent_downloaded
+            }
         )
+
 
     @classmethod
     def to_sonarr_episode(cls, medusa_ep: Dict[str, Any], series_id: int) -> SonarrEpisode:

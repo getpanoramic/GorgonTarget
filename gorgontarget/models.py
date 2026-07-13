@@ -35,6 +35,13 @@ class SonarrSeries(BaseModel):
     useSceneNumbering: bool = False
     added: str = "2026-01-01T00:00:00Z"
     seasons: List[Dict] = []
+    statistics: Dict[str, Any] = Field(default_factory=lambda: {
+        "episodeFileCount": 0,
+        "episodeCount": 0,
+        "totalEpisodeCount": 0,
+        "sizeOnDisk": 0,
+        "percentOfEpisodes": 100
+    })
 
 class SonarrEpisode(BaseModel):
     id: int
