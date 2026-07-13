@@ -1,4 +1,5 @@
 import httpx
+import sys
 from typing import Dict, Any, List, Optional
 from .settings import settings
 from .cache import capability_cache, series_map_cache
