@@ -82,18 +82,41 @@ class MedusaClient:
         if res.status_code == 200 and res.json().get("result") == "success":
             return {"id": tvdb_id, "title": title, "path": root_path}
         return None
-
     async def get_episodes(self, target_id: int) -> List[Dict[str, Any]]:
         # Attempt to retrieve the slug from cache
         slug = await series_map_cache.get(f"map_{target_id}")
-        if not slug:
-            # If mapping is missing, refresh cache by fetching all series
-            await self.get_all_series()
-            slug = await series_map_cache.get(f"map_{target_id}") or target_id
+        print(f"[DEBUG] get_episodes: target_id={target_id}, cached_slug={slug}", file=sys.stderr, flush=True)
 
-        res = await self.client.get(f"/api/v2/series/{slug}/episodes", headers=self.headers)
+        # If mapping is missing, attempt to refresh cache
+        if not slug:
+            print(f"[DEBUG] get_episodes: Mapping missing, refreshing cache...", file=sys.stderr, flush=True)
+            await self.get_all_series()
+            slug = await series_map_cache.get(f"map_{target_id}")
+            print(f"[DEBUG] get_episodes: After refresh, cached_slug={slug}", file=sys.stderr, flush=True)
+
+        # If still no slug, try fetching series details to construct it
+        if not slug:
+            print(f"[DEBUG] get_episodes: Still no slug, fetching series details for target_id={target_id}", file=sys.stderr, flush=True)
+            series_data = await self.get_series_by_id(target_id)
+            if series_data:
+                indexer = series_data.get("default_indexer") or series_data.get("indexer") or "tvdb"
+                val = series_data.get("ids", {}).get(indexer)
+                slug = f"{indexer}{val}" if val else str(target_id)
+                print(f"[DEBUG] get_episodes: Constructed slug={slug} from series data", file=sys.stderr, flush=True)
+            else:
+                slug = str(target_id)
+                print(f"[DEBUG] get_episodes: Could not construct slug, using raw target_id={slug}", file=sys.stderr, flush=True)
+
+        # Make the API call using the resolved slug
+        url = f"/api/v2/series/{slug}/episodes"
+        print(f"[DEBUG] get_episodes: Calling API URL={url}", file=sys.stderr, flush=True)
+        res = await self.client.get(url, headers=self.headers)
+
+        print(f"[DEBUG] get_episodes: API status={res.status_code}", file=sys.stderr, flush=True)
         if res.status_code == 200:
             return res.json()
+
+        print(f"[DEBUG] get_episodes: Failed API call, response={res.text[:100]}", file=sys.stderr, flush=True)
         return []
 
     async def get_calendar(self) -> Dict[str, List[Dict[str, Any]]]:
