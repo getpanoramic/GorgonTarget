@@ -1,5 +1,5 @@
 import os
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "GorgonTarget Stateless Proxy"
@@ -8,7 +8,6 @@ class Settings(BaseSettings):
     timeout: float = 30.0
     cache_ttl_seconds: int = 300
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env")
 
 settings = Settings()

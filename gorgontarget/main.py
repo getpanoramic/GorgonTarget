@@ -12,6 +12,12 @@ from pydantic import BaseModel
 from starlette.types import ASGIApp, Scope, Receive, Send
 import httpx
 
+from .settings import settings
+from .cache import series_map_cache, capability_cache
+from .models import SonarrAddSeries, SonarrCommand, SonarrSeries, SonarrEpisode, SonarrSystemStatus
+from .translator import MedusaTranslator
+from .client import MedusaClient
+
 SERIES_ID_MAP = {}
 
 # ADD THIS: Persistent registry for command tracking
@@ -48,8 +54,7 @@ class CaseInsensitiveAPIMiddleware:
 app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.6.0")
 app.add_middleware(CaseInsensitiveAPIMiddleware)
 
-MEDUSA_URL = os.getenv("MEDUSA_URL", "http://localhost:8081")
-async_client = httpx.AsyncClient(base_url=MEDUSA_URL, timeout=30.0)
+async_client = httpx.AsyncClient(base_url=settings.medusa_url, timeout=settings.timeout)
 
 # Maps Sonarr proxy IDs -> real Medusa IDs
 SERIES_ID_MAP = {}
@@ -122,28 +127,26 @@ def extract_clean_year(show_node: dict) -> int:
 # CORE REUSABLE IMPLEMENTATIONS
 # ---------------------------------------------------------------------------
 async def core_system_status(api_key: str):
+    client = MedusaClient(api_key)
+    medusa_config = await client.get_system_config()
+    
     medusa_version = "3.0.10.1567"
     os_name = "linux"
     startup_path = "/app"
     app_data = "/config"
     
-    try:
-        config_res = await async_client.get("/api/v2/config", headers=medusa_headers(api_key))
-        if config_res.status_code == 200:
-            medusa_config = config_res.json()
-            main_config = medusa_config.get("main", {}) or medusa_config.get("app", {})
-            if "version" in main_config:
-                medusa_version = main_config.get("version")
-            running_dir = main_config.get("rootDir", main_config.get("dataDir", "/config"))
-            if "\\" in running_dir:
-                os_name = "windows"
-                startup_path = "C:\\Program Files\\Medusa"
-                app_data = running_dir
-            else:
-                startup_path = main_config.get("rootDir", "/app")
-                app_data = main_config.get("dataDir", "/config")
-    except Exception as e:
-        log_debug(f"Config fallback exception: {str(e)}")
+    if medusa_config:
+        main_config = medusa_config.get("main", {}) or medusa_config.get("app", {})
+        if "version" in main_config:
+            medusa_version = main_config.get("version")
+        running_dir = main_config.get("rootDir", main_config.get("dataDir", "/config"))
+        if "\\" in running_dir:
+            os_name = "windows"
+            startup_path = "C:\\Program Files\\Medusa"
+            app_data = running_dir
+        else:
+            startup_path = main_config.get("rootDir", "/app")
+            app_data = main_config.get("dataDir", "/config")
 
     return {
         "version": medusa_version,
@@ -156,53 +159,12 @@ async def core_system_status(api_key: str):
     }
 
 async def core_all_series(api_key: str):
-    res = await async_client.get("/api/v2/series", params={"limit": 1000}, headers=medusa_headers(api_key))
-    if res.status_code != 200:
-        return JSONResponse(status_code=res.status_code, content=res.json())
-
-    medusa_shows = res.json()
+    client = MedusaClient(api_key)
+    medusa_shows = await client.get_all_series()
+    
     sonarr_shows = []
-    SERIES_ID_MAP.clear()
-
     for show in medusa_shows:
-        ids = show.get("ids", {})
-        medusa_id = extract_clean_integer_id(show)
-        
-        indexer = show.get("default_indexer") or show.get("indexer") or "tvdb"
-        val = ids.get(indexer) or ids.get("tvdb") or ids.get("tmdb")
-        slug_string = f"{indexer}{val}" if val else str(medusa_id)
-        
-        SERIES_ID_MAP[int(medusa_id)] = slug_string
-        
-        title = show.get("title", f"Series {medusa_id}")
-        raw_path = show.get("path", "")
-        
-        # Python 3.11 Syntax Fix: Build safe string outside the f-string
-        safe_title = title.replace("/", "_").replace("\\", "_")
-        path = str(raw_path) if raw_path and raw_path != "/tv" else f"/tv/{safe_title}"
-
-        sonarr_shows.append({
-            "id": int(medusa_id),
-            "tvdbId": int(ids.get("tvdb")) if ids.get("tvdb") else 0,
-            "tmdbId": int(ids.get("tmdb")) if ids.get("tmdb") else 0,
-            "imdbId": ids.get("imdb") or "",
-            "title": title,
-            "sortTitle": title.lower(),
-            "status": "continuing" if show.get("status") == "continuing" else "ended",
-            "overview": show.get("overview", ""),
-            "year": extract_clean_year(show),
-            "images": build_sonarr_images(int(medusa_id)),
-            "alternateTitles": [],
-            "genres": [],
-            "seriesType": "standard",
-            "path": path,
-            "profileId": 1,
-            "languageProfileId": 1,
-            "monitored": not show.get("paused", False),
-            "useSceneNumbering": False,
-            "added": "2026-01-01T00:00:00Z",
-            "seasons": []
-        })
+        sonarr_shows.append(MedusaTranslator.to_sonarr_series(show).dict())
 
     log_debug(f"OUTBOUND DATASET: Sent {len(sonarr_shows)} series objects with full image specifications.")
     return sonarr_shows
@@ -313,36 +275,13 @@ async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depend
 async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_key)):
     if series_id == 0:
         return {"id": 0, "title": "Initialization Stub", "tvdbId": 0, "year": 0, "imdbId": "", "images": [], "alternateTitles": [], "genres": [], "seriesType": "standard", "path": "/tv", "monitored": False, "added": "2026-01-01T00:00:00Z"}
-    try:
-        res = await async_client.get(f"/api/v2/series/{series_id}", headers=medusa_headers(api_key))
-        if res.status_code != 200:
-            raise HTTPException(status_code=404, detail="Series not found")
-            
-        show = res.json()
-        clean_id = extract_clean_integer_id(show)
-        return {
-            "id": int(clean_id),
-            "title": show.get("title"),
-            "tvdbId": int(clean_id),
-            "imdbId": show.get("ids", {}).get("imdb", ""),
-            "year": extract_clean_year(show),
-            "images": build_sonarr_images(int(clean_id)),
-            "alternateTitles": [],
-            "genres": [],
-            "seriesType": "standard",
-            "path": show.get("path", "/tv"),
-            "monitored": not show.get("paused", False),
-            "added": "2026-01-01T00:00:00Z",
-        }
-    except Exception:
+    
+    client = MedusaClient(api_key)
+    show = await client.get_series_by_id(series_id)
+    if not show:
         raise HTTPException(status_code=404, detail="Series not found")
-
-class SonarrAddSeries(BaseModel):
-    title: str
-    tvdbId: int
-    profileId: int
-    rootFolderPath: str
-    monitored: bool = True
+        
+    return MedusaTranslator.to_sonarr_series(show).dict()
 
 @app.post("/api/v3/series")
 async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa_key)):
