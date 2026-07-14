@@ -41,10 +41,11 @@ def log_debug(message: str):
 # Helper function to generate standard image links for Sonarr clients
 def build_sonarr_images(series_id: int) -> List[Dict[str, str]]:
     return [
-        {"coverType": "poster", "url": f"/v3/mediacover/{series_id}/poster.jpg"},
-        {"coverType": "banner", "url": f"/v3/mediacover/{series_id}/banner.jpg"},
-        {"coverType": "fanart", "url": f"/v3/mediacover/{series_id}/fanart.jpg"}
+        {"coverType": "poster", "url": f"v3/mediacover/{series_id}/poster-500.jpg"},
+        {"coverType": "banner", "url": f"v3/mediacover/{series_id}/banner-500.jpg"},
+        {"coverType": "fanart", "url": f"v3/mediacover/{series_id}/fanart-500.jpg"}
     ]
+
 
 def parse_medusa_size(size_str: str) -> int:
     """Converts '547.56 GB' or '1.39 TB' to bytes."""
