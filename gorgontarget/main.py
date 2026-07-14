@@ -32,24 +32,14 @@ class CaseInsensitiveAPIMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"] == "http":
-            path = scope.get("path", "")
             method = scope.get("method", "UNKNOWN")
+            path = scope.get("path", "")
             
             # Print simplified request line
             print(f"[GorgonTarget] {method} {path}", file=sys.stderr, flush=True)
             
-            if path != "/":
-                # Normalize: remove existing /api/ prefix if present to avoid double-prefixing
-                if path.startswith("/api/"):
-                    path = path[4:]
-                
-                # Standardize path
-                normalized_path = path.lower()
-                if normalized_path.endswith("/") and len(normalized_path) > 1:
-                    normalized_path = normalized_path.rstrip("/")
-                
-                # Re-apply single /api prefix
-                scope["path"] = "/api" + normalized_path if not normalized_path.startswith("/api") else normalized_path
+            # Pass through exactly as is
+            scope["path"] = path.lower()
 
         await self.app(scope, receive, send)
 
