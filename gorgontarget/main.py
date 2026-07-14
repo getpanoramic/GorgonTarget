@@ -475,21 +475,54 @@ async def get_queue_status(api_key: str = Depends(get_medusa_key)):
     return {"totalCount": 0, "count": 0, "pageSize": 20, "sortKey": "timeleft", "unknownQueueItems": 0, "queued": 0, "downloading": 0, "failed": 0, "errors": False, "warnings": False}
 
 @app.get("/api/v3/history")
-async def get_history(page: int = 1, pageSize: int = 100, api_key: str = Depends(get_medusa_key)):
+async def get_history(
+    page: int = Query(1), 
+    pageSize: int = Query(100),
+    seriesIds: Optional[str] = Query(None), # Comma-separated IDs
+    includeEpisode: bool = Query(False),
+    api_key: str = Depends(get_medusa_key)
+):
     try:
+        # Resolve requested series IDs
+        target_series_ids = set()
+        if seriesIds:
+            target_series_ids = {int(i.strip()) for i in seriesIds.split(",") if i.strip().isdigit()}
+            
+        # Medusa's history endpoint
         res = await async_client.get("/api/v2/history", headers=medusa_headers(api_key))
-        if res.status_code != 200: return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
-        records = [{
-            "id": i + 1,
-            "sourceTitle": item.get("show_name", "Unknown"),
-            "eventType": item.get("action", "unknown"),
-            "date": item.get("date", "2026-01-01T00:00:00Z"),
-            "seriesId": int(item.get("series_id", 0)),
-            "episodeId": int(item.get("episode_id", 0))
-        } for i, item in enumerate(res.json())]
-        return {"page": page, "pageSize": pageSize, "totalRecords": len(records), "records": records}
-    except Exception:
-        return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
+        if res.status_code != 200:
+            log_debug(f"History fetch failed: {res.status_code}")
+            return {"page": 1, "pageSize": pageSize, "totalRecords": 0, "records": []}
+            
+        data = res.json()
+        log_debug(f"History raw data received (count: {len(data)})")
+        
+        # Filter and transform
+        filtered_records = []
+        for i, item in enumerate(data):
+            series_id = int(item.get("series_id", 0))
+            
+            if target_series_ids and series_id not in target_series_ids:
+                continue
+                
+            filtered_records.append({
+                "id": i + 1,
+                "sourceTitle": item.get("show_name", "Unknown"),
+                "eventType": item.get("action", "unknown"),
+                "date": item.get("date", "2026-01-01T00:00:00Z"),
+                "seriesId": series_id,
+                "episodeId": int(item.get("episode_id", 0))
+            })
+        
+        return {
+            "page": page, 
+            "pageSize": pageSize, 
+            "totalRecords": len(filtered_records), 
+            "records": filtered_records
+        }
+    except Exception as e:
+        log_debug(f"History exception: {str(e)}")
+        return {"page": 1, "pageSize": pageSize, "totalRecords": 0, "records": []}
 
 # ---------------------------------------------------------------------------
 # HARDWARE & MANAGEMENT AGENTS
