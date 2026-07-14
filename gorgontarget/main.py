@@ -38,17 +38,18 @@ class CaseInsensitiveAPIMiddleware:
             # Print simplified request line
             print(f"[GorgonTarget] {method} {path}", file=sys.stderr, flush=True)
             
-            # Normalize: remove existing /api/ prefix if present to avoid double-prefixing
-            if path.startswith("/api/"):
-                path = path[4:]
-            
-            # Standardize path
-            normalized_path = path.lower()
-            if normalized_path.endswith("/") and len(normalized_path) > 1:
-                normalized_path = normalized_path.rstrip("/")
-            
-            # Re-apply single /api prefix
-            scope["path"] = "/api" + normalized_path if not normalized_path.startswith("/api") else normalized_path
+            if path != "/":
+                # Normalize: remove existing /api/ prefix if present to avoid double-prefixing
+                if path.startswith("/api/"):
+                    path = path[4:]
+                
+                # Standardize path
+                normalized_path = path.lower()
+                if normalized_path.endswith("/") and len(normalized_path) > 1:
+                    normalized_path = normalized_path.rstrip("/")
+                
+                # Re-apply single /api prefix
+                scope["path"] = "/api" + normalized_path if not normalized_path.startswith("/api") else normalized_path
 
         await self.app(scope, receive, send)
 
