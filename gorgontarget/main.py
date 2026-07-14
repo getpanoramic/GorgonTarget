@@ -415,8 +415,32 @@ async def get_single_episode(episode_id: int, includeEpisodeFile: bool = Query(F
     raise HTTPException(status_code=404, detail="Episode not found")
 
 @app.get("/api/v3/episodefile")
-async def get_episode_files(seriesId: Optional[int] = Query(None), seriesid: Optional[int] = Query(None)):
-    return []
+async def get_episode_files(
+    seriesId: Optional[int] = Query(None), 
+    seriesid: Optional[int] = Query(None),
+    api_key: str = Depends(get_medusa_key)
+):
+    target_id = seriesId or seriesid
+    if not target_id: return []
+    
+    client = MedusaClient(api_key)
+    medusa_episodes = await client.get_episodes(target_id)
+    
+    episode_files = []
+    for ep in medusa_episodes:
+        status = str(ep.get("status", "")).lower()
+        if status in ["downloaded", "snatched"]:
+            ep_id = extract_clean_integer_id({"id": ep.get("id")})
+            episode_files.append({
+                "id": ep_id,
+                "seriesId": target_id,
+                "seasonNumber": int(ep.get("season", 0)),
+                "relativePath": ep.get("location", ""),
+                "path": ep.get("location", ""),
+                "size": parse_medusa_size(ep.get("size", "0 B")),
+                "dateAdded": ep.get("date", "2026-01-01T00:00:00Z")
+            })
+    return episode_files
 
 # ---------------------------------------------------------------------------
 # CALENDAR, QUEUE, WANTED & HISTORY TRAFFIC
