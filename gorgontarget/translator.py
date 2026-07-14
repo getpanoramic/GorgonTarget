@@ -94,9 +94,9 @@ class MedusaTranslator:
             path=medusa_show.get("config", {}).get("location", f"/tv/{title}"),
             monitored=not medusa_show.get("paused", False),
             images=[
-                {"coverType": "poster", "url": f"/v3/mediacover/{medusa_id}/poster.jpg"},
-                {"coverType": "banner", "url": f"/v3/mediacover/{medusa_id}/banner.jpg"},
-                {"coverType": "fanart", "url": f"/v3/mediacover/{medusa_id}/fanart.jpg"}
+                {"coverType": "poster", "url": f"v3/mediacover/{medusa_id}/poster.jpg"},
+                {"coverType": "banner", "url": f"v3/mediacover/{medusa_id}/banner.jpg"},
+                {"coverType": "fanart", "url": f"v3/mediacover/{medusa_id}/fanart.jpg"}
             ],
             seasons=seasons,
             statistics={
