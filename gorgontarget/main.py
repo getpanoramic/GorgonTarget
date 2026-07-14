@@ -64,9 +64,9 @@ def log_debug(message: str):
 # Helper function to generate standard image links for Sonarr clients
 def build_sonarr_images(series_id: int) -> List[Dict[str, str]]:
     return [
-        {"coverType": "poster", "url": f"/api/v3/mediacover/{series_id}/poster.jpg"},
-        {"coverType": "banner", "url": f"/api/v3/mediacover/{series_id}/banner.jpg"},
-        {"coverType": "fanart", "url": f"/api/v3/mediacover/{series_id}/fanart.jpg"}
+        {"coverType": "poster", "url": f"/v3/mediacover/{series_id}/poster.jpg"},
+        {"coverType": "banner", "url": f"/v3/mediacover/{series_id}/banner.jpg"},
+        {"coverType": "fanart", "url": f"/v3/mediacover/{series_id}/fanart.jpg"}
     ]
 
 def parse_medusa_size(size_str: str) -> int:
@@ -220,7 +220,7 @@ async def get_releases(episodeId: int = Query(...), api_key: str = Depends(get_m
 @app.get("/api/v3/mediacover/{series_id}/{asset_file}")
 async def get_media_cover(series_id: str, asset_file: str, api_key: str = Depends(get_medusa_key)):
     """
-    Catches image proxy requests from Prismarr, resolves their asset targets, 
+    Catches image proxy requests, resolves their asset targets, 
     and fetches the raw byte content dynamically from Medusa.
     """
     asset_lower = asset_file.lower()
@@ -233,16 +233,19 @@ async def get_media_cover(series_id: str, asset_file: str, api_key: str = Depend
     # Resolve the series slug from the cache
     slug = await series_map_cache.get(f"map_{series_id}") or series_id
 
-    target_url = f"/api/v2/series/{slug}/asset/{medusa_asset_type}"
+    # Construct the URL dynamically using the configured MEDUSA_URL
+    target_url = f"{MEDUSA_URL}/api/v2/series/{slug}/asset/{medusa_asset_type}?api_key={api_key}"
     log_debug(f"Proxying visual cover asset: {medusa_asset_type} for series {series_id} (slug: {slug})")
     
     try:
-        response = await async_client.get(target_url, headers=medusa_headers(api_key))
-        if response.status_code == 200:
-            return StreamingResponse(
-                response.iter_bytes(), 
-                media_type=response.headers.get("content-type", "image/jpeg")
-            )
+        # Fetch directly using httpx
+        async with httpx.AsyncClient(timeout=settings.timeout) as client:
+            response = await client.get(target_url)
+            if response.status_code == 200:
+                return StreamingResponse(
+                    response.iter_bytes(), 
+                    media_type=response.headers.get("content-type", "image/jpeg")
+                )
     except Exception as e:
         log_debug(f"Failed to pull image proxy: {str(e)}")
         
