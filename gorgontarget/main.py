@@ -71,9 +71,9 @@ def log_debug(message: str):
 # Helper function to generate standard image links for Sonarr clients
 def build_sonarr_images(series_id: int) -> List[Dict[str, str]]:
     return [
-        {"coverType": "poster", "url": f"/v3/mediacover/{series_id}/poster.jpg"},
-        {"coverType": "banner", "url": f"/v3/mediacover/{series_id}/banner.jpg"},
-        {"coverType": "fanart", "url": f"/v3/mediacover/{series_id}/fanart.jpg"}
+        {"coverType": "poster", "url": f"/api/v3/mediacover/{series_id}/poster.jpg"},
+        {"coverType": "banner", "url": f"/api/v3/mediacover/{series_id}/banner.jpg"},
+        {"coverType": "fanart", "url": f"/api/v3/mediacover/{series_id}/fanart.jpg"}
     ]
 
 def parse_medusa_size(size_str: str) -> int:
@@ -535,14 +535,21 @@ async def get_history(
                 "eventType": item.get("action", "unknown"),
                 "date": item.get("date", "2026-01-01T00:00:00Z"),
                 "seriesId": series_id,
-                "episodeId": int(item.get("episode_id", 0))
+                "episodeId": int(item.get("episode_id", 0)),
+                "data": {"seriesId": series_id, "episodeId": int(item.get("episode_id", 0))}
             })
+        
+        # Implement Pagination
+        total_records = len(filtered_records)
+        start_idx = (page - 1) * pageSize
+        end_idx = start_idx + pageSize
+        page_records = filtered_records[start_idx:end_idx]
         
         return {
             "page": page, 
             "pageSize": pageSize, 
-            "totalRecords": len(filtered_records), 
-            "records": filtered_records
+            "totalRecords": total_records, 
+            "records": page_records
         }
     except Exception as e:
         log_debug(f"History exception: {str(e)}")
