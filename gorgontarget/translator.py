@@ -88,15 +88,15 @@ class MedusaTranslator:
             tmdbId=int(ids.get("tmdb") or 0),
             imdbId=ids.get("imdb") or "",
             sortTitle=title.lower(),
-            status="continuing" if medusa_show.get("status") == "continuing" else "ended",
-            overview=medusa_show.get("overview", ""),
+            status="continuing" if medusa_show.get("status", "").lower() == "continuing" else "ended",
+            overview=medusa_show.get("plot", medusa_show.get("overview", "")),
             year=cls.extract_clean_year(medusa_show),
             path=medusa_show.get("config", {}).get("location", f"/tv/{title}"),
             monitored=not medusa_show.get("paused", False),
             images=[
-                {"coverType": "poster", "url": f"v3/mediacover/{medusa_id}/poster.jpg"},
-                {"coverType": "banner", "url": f"v3/mediacover/{medusa_id}/banner.jpg"},
-                {"coverType": "fanart", "url": f"v3/mediacover/{medusa_id}/fanart.jpg"}
+                {"coverType": "poster", "url": f"/api/v3/mediacover/{medusa_id}/poster.jpg"},
+                {"coverType": "banner", "url": f"/api/v3/mediacover/{medusa_id}/banner.jpg"},
+                {"coverType": "fanart", "url": f"/api/v3/mediacover/{medusa_id}/fanart.jpg"}
             ],
             seasons=seasons,
             statistics={
