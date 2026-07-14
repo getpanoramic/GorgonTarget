@@ -24,30 +24,10 @@ SERIES_ID_MAP = {}
 COMMAND_REGISTRY = {}
 
 # ---------------------------------------------------------------------------
-# REFINED PATH & CASE-INSENSITIVE ROUTING MIDDLEWARE (CLEAN LOGS)
-# ---------------------------------------------------------------------------
-class CaseInsensitiveAPIMiddleware:
-    def __init__(self, app: ASGIApp):
-        self.app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send):
-        if scope["type"] == "http":
-            method = scope.get("method", "UNKNOWN")
-            path = scope.get("path", "")
-            
-            # Print simplified request line
-            print(f"[GorgonTarget] {method} {path}", file=sys.stderr, flush=True)
-            
-            # Pass through exactly as is
-            scope["path"] = path.lower()
-
-        await self.app(scope, receive, send)
-
-# ---------------------------------------------------------------------------
 # APP INITIALIZATION
 # ---------------------------------------------------------------------------
 app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.6.0")
-app.add_middleware(CaseInsensitiveAPIMiddleware)
+# REMOVED CaseInsensitiveAPIMiddleware
 
 MEDUSA_URL = settings.medusa_url
 async_client = httpx.AsyncClient(base_url=MEDUSA_URL, timeout=settings.timeout)
@@ -61,9 +41,9 @@ def log_debug(message: str):
 # Helper function to generate standard image links for Sonarr clients
 def build_sonarr_images(series_id: int) -> List[Dict[str, str]]:
     return [
-        {"coverType": "poster", "url": f"/api/v3/mediacover/{series_id}/poster.jpg"},
-        {"coverType": "banner", "url": f"/api/v3/mediacover/{series_id}/banner.jpg"},
-        {"coverType": "fanart", "url": f"/api/v3/mediacover/{series_id}/fanart.jpg"}
+        {"coverType": "poster", "url": f"/v3/mediacover/{series_id}/poster.jpg"},
+        {"coverType": "banner", "url": f"/v3/mediacover/{series_id}/banner.jpg"},
+        {"coverType": "fanart", "url": f"/v3/mediacover/{series_id}/fanart.jpg"}
     ]
 
 def parse_medusa_size(size_str: str) -> int:
