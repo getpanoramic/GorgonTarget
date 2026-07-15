@@ -230,15 +230,20 @@ async def get_releases(episodeId: int = Query(...), api_key: str = Depends(get_m
     return releases
 
 @app.get("/api/v3/mediacover/{series_id}/{asset_file}")
-async def get_media_cover(series_id: str, asset_file: str, api_key: str = Depends(get_medusa_key)):
+async def get_media_cover(
+    series_id: str, 
+    asset_file: str, 
+    api_key: Optional[str] = Query(None)
+):
     """
-    Catches image proxy requests, resolves their asset targets, 
-    and fetches the raw byte content dynamically from Medusa using a shared client.
-    Handles generic asset file names (poster, banner, fanart) and suffixed versions.
+    Catches image proxy requests. Accepts API key as a query parameter 
+    to properly authenticate with the Medusa backend.
     """
+    effective_key = api_key or os.getenv("DEFAULT_MEDUSA_API_KEY", "")
+    
     asset_lower = asset_file.lower()
     
-    # Improved asset mapping
+    # Asset mapping
     medusa_asset_type = "poster"
     if "banner" in asset_lower:
         medusa_asset_type = "banner"
@@ -255,13 +260,16 @@ async def get_media_cover(series_id: str, asset_file: str, api_key: str = Depend
     log_debug(f"Proxying visual cover asset: {medusa_asset_type} for series {series_id} (slug: {slug})")
 
     try:
-        # Fetch using shared async_client
-        response = await async_client.get(target_url, params={"api_key": api_key})
+        # Fetch using shared async_client, passing API key
+        response = await async_client.get(target_url, params={"api_key": effective_key})
         if response.status_code == 200:
             return StreamingResponse(
                 response.iter_bytes(), 
                 media_type=response.headers.get("content-type", "image/jpeg")
             )
+        else:
+            log_debug(f"Medusa returned status {response.status_code} for {target_url}")
+            
     except Exception as e:
         log_debug(f"Failed to pull image proxy: {str(e)}")
 
