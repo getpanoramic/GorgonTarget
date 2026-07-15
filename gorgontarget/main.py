@@ -581,11 +581,12 @@ async def get_history(
             return {"page": 1, "pageSize": pageSize, "totalRecords": 0, "records": []}
             
         data = res.json()
-        log_debug(f"History raw data received (count: {len(data)})")
+        log_debug(f"History raw data received (count: {len(data)}): {data}")
         
         # Filter and transform
         filtered_records = []
         for i, item in enumerate(data):
+            log_debug(f"Processing history item {i}: {item}")
             series_id = int(item.get("series_id", 0))
             
             if target_series_ids and series_id not in target_series_ids:
@@ -601,8 +602,7 @@ async def get_history(
                 "data": {"seriesId": series_id, "episodeId": int(item.get("episode_id", 0))}
             })
         
-        # Implement Pagination
-        total_records = len(filtered_records)
+        log_debug(f"Total filtered history records: {len(filtered_records)}")
         start_idx = (page - 1) * pageSize
         end_idx = start_idx + pageSize
         page_records = filtered_records[start_idx:end_idx]
