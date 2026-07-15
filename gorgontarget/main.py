@@ -42,8 +42,12 @@ class PathNormalizationMiddleware:
             
             # Collapse double slashes and double-prefixing
             new_path = path.replace("//", "/")
-            if new_path.startswith("/api/v3/api/v3/"):
-                new_path = new_path.replace("/api/v3/api/v3/", "/api/v3/", 1)
+            
+            # Robustly collapse redundant API prefixes
+            while "/api/api/" in new_path:
+                new_path = new_path.replace("/api/api/", "/api/")
+            while "/api/v3/api/v3/" in new_path:
+                new_path = new_path.replace("/api/v3/api/v3/", "/api/v3/")
             
             scope["path"] = new_path.lower()
             print(f"[Middleware DEBUG] Normalized path: {new_path}", file=sys.stderr, flush=True)
@@ -292,8 +296,33 @@ async def root_index():
 async def get_system_status_v2(api_key: str = Depends(get_medusa_key)):
     return await core_system_status(api_key)
 
-# Helper to pass data through without modifying URLs
-def no_op_urls(data: Any, request: Request) -> Any:
+# Helper to ensure all image URLs are fully qualified absolute URLs pointing to this proxy
+def apply_absolute_urls(data: Any, request: Request) -> Any:
+    # Dynamically detect the base URL from the incoming request (the proxy's host)
+    base_url = str(request.base_url).rstrip('/')
+    
+    def _fix_item(item: dict):
+        if "images" in item:
+            for img in item["images"]:
+                # If the URL is already fully qualified, leave it.
+                # Otherwise, prepend the proxy's base URL.
+                if "url" in img and not img["url"].startswith("http"):
+                    path = img["url"].lstrip("/")
+                    img["url"] = f"{base_url}/{path}"
+                
+                if "remoteUrl" in img and not img["remoteUrl"].startswith("http"):
+                    path_rem = img["remoteUrl"].lstrip("/")
+                    img["remoteUrl"] = f"{base_url}/{path_rem}"
+        
+        if "remotePoster" in item and item["remotePoster"] and not item["remotePoster"].startswith("http"):
+            path_post = item["remotePoster"].lstrip("/")
+            item["remotePoster"] = f"{base_url}/{path_post}"
+        return item
+
+    if isinstance(data, list):
+        return [_fix_item(item) for item in data]
+    elif isinstance(data, dict):
+        return _fix_item(data)
     return data
 
 @app.get("/api/series")
@@ -302,7 +331,7 @@ async def get_all_series_v2(request: Request, api_key: str = Depends(get_medusa_
     user_agent = request.headers.get("user-agent", "unknown")
     log_debug(f"User-Agent: {user_agent}")
     data = await core_all_series(api_key)
-    return no_op_urls(data, request)
+    return apply_absolute_urls(data, request)
 
 @app.get("/api/v3/system/status")
 async def get_system_status_v3(api_key: str = Depends(get_medusa_key)):
@@ -355,7 +384,7 @@ async def series_lookup(request: Request, term: Optional[str] = Query(None), api
             "remotePoster": f"/api/v3/mediacover/{extract_clean_integer_id(item)}/poster-500.jpg",
             "added": "2026-01-01T00:00:00Z",
         } for item in res.json()]
-        return no_op_urls(data, request)
+        return apply_absolute_urls(data, request)
     except Exception:
         return []
 
