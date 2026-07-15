@@ -234,13 +234,18 @@ async def get_media_cover(series_id: str, asset_file: str, api_key: str = Depend
     """
     Catches image proxy requests, resolves their asset targets, 
     and fetches the raw byte content dynamically from Medusa using a shared client.
+    Handles generic asset file names (poster, banner, fanart) and suffixed versions.
     """
     asset_lower = asset_file.lower()
+    
+    # Improved asset mapping
     medusa_asset_type = "poster"
     if "banner" in asset_lower:
         medusa_asset_type = "banner"
     elif "fanart" in asset_lower:
         medusa_asset_type = "fanart"
+    elif "poster" in asset_lower:
+        medusa_asset_type = "poster"
 
     # Resolve the series slug from the cache
     slug = await series_map_cache.get(f"map_{series_id}") or series_id
@@ -327,7 +332,7 @@ async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depend
             "seriesType": "standard",
             "overview": item.get("overview"),
             "year": extract_clean_year(item),
-            "remotePoster": item.get("image", ""),
+            "remotePoster": f"/api/v3/mediacover/{extract_clean_integer_id(item)}/poster-500.jpg",
             "added": "2026-01-01T00:00:00Z",
         } for item in res.json()]
     except Exception:

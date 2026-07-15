@@ -95,9 +95,9 @@ class MedusaTranslator:
             path=medusa_show.get("config", {}).get("location", f"/tv/{title}"),
             monitored=not medusa_show.get("paused", False),
             images=[
-                {"coverType": "poster", "url": f"/api/v3/mediacover/{medusa_id}/poster-500.jpg", "remoteUrl": f"{settings.medusa_url}/api/v2/series/{medusa_id}/asset/poster"},
-                {"coverType": "banner", "url": f"/api/v3/mediacover/{medusa_id}/banner-500.jpg", "remoteUrl": f"{settings.medusa_url}/api/v2/series/{medusa_id}/asset/banner"},
-                {"coverType": "fanart", "url": f"/api/v3/mediacover/{medusa_id}/fanart-500.jpg", "remoteUrl": f"{settings.medusa_url}/api/v2/series/{medusa_id}/asset/fanart"}
+                {"coverType": "poster", "url": f"/api/v3/mediacover/{medusa_id}/poster-500.jpg", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/poster-500.jpg"},
+                {"coverType": "banner", "url": f"/api/v3/mediacover/{medusa_id}/banner-500.jpg", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/banner-500.jpg"},
+                {"coverType": "fanart", "url": f"/api/v3/mediacover/{medusa_id}/fanart-500.jpg", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/fanart-500.jpg"}
             ],
 
             remotePoster=f"/api/v3/mediacover/{medusa_id}/poster-500.jpg",
