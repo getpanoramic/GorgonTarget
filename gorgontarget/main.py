@@ -42,7 +42,8 @@ class PathNormalizationMiddleware:
             
             # Collapse double slashes and double-prefixing
             new_path = path.replace("//", "/")
-            new_path = new_path.replace("/api/api/", "/api/")
+            if new_path.startswith("/api/v3/api/v3/"):
+                new_path = new_path.replace("/api/v3/api/v3/", "/api/v3/", 1)
             
             scope["path"] = new_path.lower()
             print(f"[Middleware DEBUG] Normalized path: {new_path}", file=sys.stderr, flush=True)
@@ -68,9 +69,9 @@ def log_debug(message: str):
 def build_sonarr_images(series_id: int, api_key: str = "") -> List[Dict[str, str]]:
     key_param = f"?api_key={api_key}" if api_key else ""
     return [
-        {"coverType": "poster", "url": f"/api/v3/mediacover/{series_id}/poster-500.jpg{key_param}"},
-        {"coverType": "banner", "url": f"/api/v3/mediacover/{series_id}/banner-500.jpg{key_param}"},
-        {"coverType": "fanart", "url": f"/api/v3/mediacover/{series_id}/fanart-500.jpg{key_param}"}
+        {"coverType": "poster", "url": f"/mediacover/{series_id}/poster-500.jpg{key_param}"},
+        {"coverType": "banner", "url": f"/mediacover/{series_id}/banner-500.jpg{key_param}"},
+        {"coverType": "fanart", "url": f"/mediacover/{series_id}/fanart-500.jpg{key_param}"}
     ]
 
 
@@ -288,17 +289,17 @@ async def root_index():
 async def get_system_status_v2(api_key: str = Depends(get_medusa_key)):
     return await core_system_status(api_key)
 
-# Helper to ensure image URLs are relative paths starting with /
+# Helper to ensure image URLs are relative paths (no leading slash)
 def ensure_relative_paths(data: Any, request: Request) -> Any:
     def _fix_item(item: dict):
         if "images" in item:
             for img in item["images"]:
-                if "url" in img and not img["url"].startswith("/"):
-                    img["url"] = "/" + img["url"]
-                if "remoteUrl" in img and not img["remoteUrl"].startswith("/"):
-                    img["remoteUrl"] = "/" + img["remoteUrl"]
-        if "remotePoster" in item and item["remotePoster"] and not item["remotePoster"].startswith("/"):
-            item["remotePoster"] = "/" + item["remotePoster"]
+                if "url" in img and img["url"].startswith("/"):
+                    img["url"] = img["url"].lstrip("/")
+                if "remoteUrl" in img and img["remoteUrl"].startswith("/"):
+                    img["remoteUrl"] = img["remoteUrl"].lstrip("/")
+        if "remotePoster" in item and item["remotePoster"] and item["remotePoster"].startswith("/"):
+            item["remotePoster"] = item["remotePoster"].lstrip("/")
         return item
 
     if isinstance(data, list):
