@@ -25,6 +25,15 @@ class AsyncTTLCache:
                 "timestamp": time.time()
             }
 
+    async def set_many(self, entries: Dict[str, Any]):
+        async with self._lock:
+            now = time.time()
+            for key, value in entries.items():
+                self._cache[key] = {
+                    "value": value,
+                    "timestamp": now
+                }
+
     async def clear(self):
         async with self._lock:
             self._cache.clear()
@@ -32,3 +41,4 @@ class AsyncTTLCache:
 # Singleton instances for different cache domains
 series_map_cache = AsyncTTLCache(ttl=3600)
 capability_cache = AsyncTTLCache(ttl=86400)
+series_list_cache = AsyncTTLCache(ttl=300)

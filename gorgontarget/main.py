@@ -13,10 +13,13 @@ from starlette.types import ASGIApp, Scope, Receive, Send
 import httpx
 
 from .settings import settings
-from .cache import series_map_cache, capability_cache
+from .cache import series_map_cache, capability_cache, series_list_cache
 from .models import SonarrAddSeries, SonarrCommand, SonarrSeries, SonarrEpisode, SonarrSystemStatus
 from .translator import MedusaTranslator
 from .client import MedusaClient
+
+# Shared HTTP client for proxying
+async_client = httpx.AsyncClient(base_url=settings.medusa_url, timeout=settings.timeout)
 
 SERIES_ID_MAP = {}
 
@@ -159,6 +162,11 @@ async def core_system_status(api_key: str):
     }
 
 async def core_all_series(api_key: str):
+    cached = await series_list_cache.get("all_series")
+    if cached:
+        log_debug("Returning cached translated series dataset.")
+        return cached
+
     client = MedusaClient(api_key)
     medusa_shows = await client.get_all_series()
     
@@ -169,6 +177,7 @@ async def core_all_series(api_key: str):
         sonarr_shows.append(series_obj.dict())
 
     log_debug(f"OUTBOUND DATASET: Sent {len(sonarr_shows)} series objects with full image specifications.")
+    await series_list_cache.set("all_series", sonarr_shows)
     return sonarr_shows
 
 # ---------------------------------------------------------------------------
@@ -224,7 +233,7 @@ async def get_releases(episodeId: int = Query(...), api_key: str = Depends(get_m
 async def get_media_cover(series_id: str, asset_file: str, api_key: str = Depends(get_medusa_key)):
     """
     Catches image proxy requests, resolves their asset targets, 
-    and fetches the raw byte content dynamically from Medusa.
+    and fetches the raw byte content dynamically from Medusa using a shared client.
     """
     asset_lower = asset_file.lower()
     medusa_asset_type = "poster"
@@ -237,21 +246,20 @@ async def get_media_cover(series_id: str, asset_file: str, api_key: str = Depend
     slug = await series_map_cache.get(f"map_{series_id}") or series_id
 
     # Construct the URL dynamically using the configured MEDUSA_URL
-    target_url = f"{MEDUSA_URL}/api/v2/series/{slug}/asset/{medusa_asset_type}?api_key={api_key}"
+    target_url = f"/api/v2/series/{slug}/asset/{medusa_asset_type}"
     log_debug(f"Proxying visual cover asset: {medusa_asset_type} for series {series_id} (slug: {slug})")
-    
+
     try:
-        # Fetch directly using httpx
-        async with httpx.AsyncClient(timeout=settings.timeout) as client:
-            response = await client.get(target_url)
-            if response.status_code == 200:
-                return StreamingResponse(
-                    response.iter_bytes(), 
-                    media_type=response.headers.get("content-type", "image/jpeg")
-                )
+        # Fetch using shared async_client
+        response = await async_client.get(target_url, params={"api_key": api_key})
+        if response.status_code == 200:
+            return StreamingResponse(
+                response.iter_bytes(), 
+                media_type=response.headers.get("content-type", "image/jpeg")
+            )
     except Exception as e:
         log_debug(f"Failed to pull image proxy: {str(e)}")
-        
+
     transparent_pixel = b'\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff\x21\xf9\x04\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b'
     return StreamingResponse(iter([transparent_pixel]), media_type="image/gif")
 
@@ -335,7 +343,10 @@ async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_ke
     if not show:
         raise HTTPException(status_code=404, detail="Series not found")
         
-    return MedusaTranslator.to_sonarr_series(show).dict()
+    series_obj = MedusaTranslator.to_sonarr_series(show)
+    series_dict = series_obj.dict()
+    log_debug(f"Returning series details for {series_id}: {series_dict}")
+    return series_dict
 
 @app.post("/api/v3/series")
 async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa_key)):

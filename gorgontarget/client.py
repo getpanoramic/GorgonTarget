@@ -42,7 +42,8 @@ class MedusaClient:
         res = await self.client.get("/api/v2/series", params={"limit": 1000}, headers=self.headers)
         if res.status_code == 200:
             shows = res.json()
-            # Update cache map for episode lookups
+            # Update cache map for episode lookups in batch
+            cache_updates = {}
             for show in shows:
                 m_id = MedusaTranslator.extract_clean_integer_id(show)
                 
@@ -56,8 +57,10 @@ class MedusaClient:
                     val = show.get("ids", {}).get(indexer)
                     slug = f"{indexer}{val}" if val else str(m_id)
                 
-                await series_map_cache.set(f"map_{m_id}", slug)
-                print(f"[DEBUG] get_all_series: Mapping m_id={m_id} to slug={slug}", file=sys.stderr, flush=True)
+                cache_updates[f"map_{m_id}"] = slug
+            
+            await series_map_cache.set_many(cache_updates)
+            print(f"[DEBUG] get_all_series: Updated cache with {len(cache_updates)} mappings", file=sys.stderr, flush=True)
             return shows
         return []
 

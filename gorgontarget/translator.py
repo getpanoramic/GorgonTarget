@@ -99,6 +99,7 @@ class MedusaTranslator:
                 {"coverType": "banner", "url": f"/api/v3/mediacover/{medusa_id}/banner-500.jpg", "remoteUrl": f"{settings.medusa_url}/api/v2/series/{medusa_id}/asset/banner"},
                 {"coverType": "fanart", "url": f"/api/v3/mediacover/{medusa_id}/fanart-500.jpg", "remoteUrl": f"{settings.medusa_url}/api/v2/series/{medusa_id}/asset/fanart"}
             ],
+
             remotePoster=f"/api/v3/mediacover/{medusa_id}/poster-500.jpg",
             seasons=seasons,
             statistics={
