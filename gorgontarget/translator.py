@@ -53,7 +53,7 @@ class MedusaTranslator:
             return 0
 
     @classmethod
-    def to_sonarr_series(cls, medusa_show: Dict[str, Any]) -> SonarrSeries:
+    def to_sonarr_series(cls, medusa_show: Dict[str, Any], api_key: str = "") -> SonarrSeries:
         ids = medusa_show.get("ids", {})
         medusa_id = cls.extract_clean_integer_id(medusa_show)
         title = medusa_show.get("title", f"Series {medusa_id}")
@@ -81,6 +81,7 @@ class MedusaTranslator:
                 }
             })
 
+        key_param = f"?api_key={api_key}" if api_key else ""
 
         return SonarrSeries(
             id=medusa_id,
@@ -95,12 +96,12 @@ class MedusaTranslator:
             path=medusa_show.get("config", {}).get("location", f"/tv/{title}"),
             monitored=not medusa_show.get("paused", False),
             images=[
-                {"coverType": "poster", "url": f"/api/v3/mediacover/{medusa_id}/poster-500.jpg", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/poster-500.jpg"},
-                {"coverType": "banner", "url": f"/api/v3/mediacover/{medusa_id}/banner-500.jpg", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/banner-500.jpg"},
-                {"coverType": "fanart", "url": f"/api/v3/mediacover/{medusa_id}/fanart-500.jpg", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/fanart-500.jpg"}
+                {"coverType": "poster", "url": f"/api/v3/mediacover/{medusa_id}/poster-500.jpg{key_param}", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/poster-500.jpg{key_param}"},
+                {"coverType": "banner", "url": f"/api/v3/mediacover/{medusa_id}/banner-500.jpg{key_param}", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/banner-500.jpg{key_param}"},
+                {"coverType": "fanart", "url": f"/api/v3/mediacover/{medusa_id}/fanart-500.jpg{key_param}", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/fanart-500.jpg{key_param}"}
             ],
 
-            remotePoster=f"/api/v3/mediacover/{medusa_id}/poster-500.jpg",
+            remotePoster=f"/api/v3/mediacover/{medusa_id}/poster-500.jpg{key_param}",
             seasons=seasons,
             statistics={
                 "episodeFileCount": total_episodes,
@@ -131,5 +132,13 @@ class MedusaTranslator:
             hasFile=has_file
         )
         if has_file:
-            episode.episodeFile = {"id": ep_id, "seriesId": series_id, "size": 0}
+            location = medusa_ep.get("location", "")
+            episode.episodeFile = {
+                "id": ep_id, 
+                "seriesId": series_id, 
+                "size": cls.parse_size_to_bytes(medusa_ep.get("size", "0 B")),
+                "path": location,
+                "relativePath": location,
+                "dateAdded": medusa_ep.get("date", "2026-01-01T00:00:00Z")
+            }
         return episode

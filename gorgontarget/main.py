@@ -65,11 +65,12 @@ def log_debug(message: str):
     print(f"[GorgonTarget DEBUG] {message}", file=sys.stderr, flush=True)
 
 # Helper function to generate standard image links for Sonarr clients
-def build_sonarr_images(series_id: int) -> List[Dict[str, str]]:
+def build_sonarr_images(series_id: int, api_key: str = "") -> List[Dict[str, str]]:
+    key_param = f"?api_key={api_key}" if api_key else ""
     return [
-        {"coverType": "poster", "url": f"v3/mediacover/{series_id}/poster-500.jpg"},
-        {"coverType": "banner", "url": f"v3/mediacover/{series_id}/banner-500.jpg"},
-        {"coverType": "fanart", "url": f"v3/mediacover/{series_id}/fanart-500.jpg"}
+        {"coverType": "poster", "url": f"v3/mediacover/{series_id}/poster-500.jpg{key_param}"},
+        {"coverType": "banner", "url": f"v3/mediacover/{series_id}/banner-500.jpg{key_param}"},
+        {"coverType": "fanart", "url": f"v3/mediacover/{series_id}/fanart-500.jpg{key_param}"}
     ]
 
 
@@ -172,7 +173,7 @@ async def core_all_series(api_key: str):
     
     sonarr_shows = []
     for show in medusa_shows:
-        series_obj = MedusaTranslator.to_sonarr_series(show)
+        series_obj = MedusaTranslator.to_sonarr_series(show, api_key=api_key)
         log_debug(f"Translating show: {series_obj.title}, images: {series_obj.images}")
         sonarr_shows.append(series_obj.dict())
 
@@ -356,7 +357,7 @@ async def series_lookup(request: Request, term: Optional[str] = Query(None), api
             "title": item.get("title"),
             "tvdbId": extract_clean_integer_id(item),
             "imdbId": item.get("ids", {}).get("imdb", ""),
-            "images": build_sonarr_images(extract_clean_integer_id(item)),
+            "images": build_sonarr_images(extract_clean_integer_id(item), api_key=api_key),
             "alternateTitles": [],
             "genres": [],
             "seriesType": "standard",
@@ -403,7 +404,7 @@ async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa
                 "tvdbId": payload.tvdbId,
                 "imdbId": "",
                 "year": 0,
-                "images": build_sonarr_images(int(clean_id)),
+                "images": build_sonarr_images(int(clean_id), api_key=api_key),
                 "alternateTitles": [],
                 "genres": [],
                 "seriesType": "standard",
