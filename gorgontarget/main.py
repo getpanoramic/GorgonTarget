@@ -24,10 +24,35 @@ SERIES_ID_MAP = {}
 COMMAND_REGISTRY = {}
 
 # ---------------------------------------------------------------------------
+# PATH NORMALIZATION MIDDLEWARE (Fixes double slashes)
+# ---------------------------------------------------------------------------
+class PathNormalizationMiddleware:
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            # Print simplified request line
+            print(f"[Middleware DEBUG] Incoming path: {path}", file=sys.stderr, flush=True)
+            
+            # Replace double slashes with single slash
+            new_path = path.replace("//", "/")
+            
+            # Additional cleanup to ensure single /api/ prefix
+            if new_path.startswith("/api//"):
+                new_path = new_path.replace("/api//", "/api/")
+            
+            scope["path"] = new_path
+            print(f"[Middleware DEBUG] Normalized path: {new_path}", file=sys.stderr, flush=True)
+
+        await self.app(scope, receive, send)
+
+# ---------------------------------------------------------------------------
 # APP INITIALIZATION
 # ---------------------------------------------------------------------------
 app = FastAPI(title="GorgonTarget Stateless Proxy", version="3.6.0")
-# REMOVED CaseInsensitiveAPIMiddleware
+app.add_middleware(PathNormalizationMiddleware)
 
 MEDUSA_URL = settings.medusa_url
 async_client = httpx.AsyncClient(base_url=MEDUSA_URL, timeout=settings.timeout)
