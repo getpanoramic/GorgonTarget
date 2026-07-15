@@ -68,9 +68,9 @@ def log_debug(message: str):
 def build_sonarr_images(series_id: int, api_key: str = "") -> List[Dict[str, str]]:
     key_param = f"?api_key={api_key}" if api_key else ""
     return [
-        {"coverType": "poster", "url": f"v3/mediacover/{series_id}/poster-500.jpg{key_param}"},
-        {"coverType": "banner", "url": f"v3/mediacover/{series_id}/banner-500.jpg{key_param}"},
-        {"coverType": "fanart", "url": f"v3/mediacover/{series_id}/fanart-500.jpg{key_param}"}
+        {"coverType": "poster", "url": f"/api/v3/mediacover/{series_id}/poster-500.jpg{key_param}"},
+        {"coverType": "banner", "url": f"/api/v3/mediacover/{series_id}/banner-500.jpg{key_param}"},
+        {"coverType": "fanart", "url": f"/api/v3/mediacover/{series_id}/fanart-500.jpg{key_param}"}
     ]
 
 
@@ -288,19 +288,17 @@ async def root_index():
 async def get_system_status_v2(api_key: str = Depends(get_medusa_key)):
     return await core_system_status(api_key)
 
-# Helper to prepend absolute proxy URL to images
-def apply_absolute_urls(data: Any, request: Request) -> Any:
-    base_url = str(request.base_url).rstrip('/')
-    
+# Helper to ensure image URLs are relative paths starting with /
+def ensure_relative_paths(data: Any, request: Request) -> Any:
     def _fix_item(item: dict):
         if "images" in item:
             for img in item["images"]:
-                if "url" in img and img["url"].startswith("/"):
-                    img["url"] = f"{base_url}{img['url']}"
-                if "remoteUrl" in img and img["remoteUrl"].startswith("/"):
-                    img["remoteUrl"] = f"{base_url}{img['remoteUrl']}"
-        if "remotePoster" in item and item["remotePoster"] and item["remotePoster"].startswith("/"):
-            item["remotePoster"] = f"{base_url}{item['remotePoster']}"
+                if "url" in img and not img["url"].startswith("/"):
+                    img["url"] = "/" + img["url"]
+                if "remoteUrl" in img and not img["remoteUrl"].startswith("/"):
+                    img["remoteUrl"] = "/" + img["remoteUrl"]
+        if "remotePoster" in item and item["remotePoster"] and not item["remotePoster"].startswith("/"):
+            item["remotePoster"] = "/" + item["remotePoster"]
         return item
 
     if isinstance(data, list):
@@ -309,20 +307,13 @@ def apply_absolute_urls(data: Any, request: Request) -> Any:
         return _fix_item(data)
     return data
 
-# Helper to prepend absolute proxy URL to images, with Bazarr-specific skipping
-def apply_absolute_urls_if_needed(data: Any, request: Request) -> Any:
-    user_agent = request.headers.get("user-agent", "").lower()
-    if "bazarr" in user_agent:
-        return data
-    return apply_absolute_urls_if_needed(data, request)
-
 @app.get("/api/series")
 @app.get("/api/v3/series")
 async def get_all_series_v2(request: Request, api_key: str = Depends(get_medusa_key)):
     user_agent = request.headers.get("user-agent", "unknown")
     log_debug(f"User-Agent: {user_agent}")
     data = await core_all_series(api_key)
-    return apply_absolute_urls_if_needed(data, request)
+    return ensure_relative_paths(data, request)
 
 @app.get("/api/v3/system/status")
 async def get_system_status_v3(api_key: str = Depends(get_medusa_key)):
@@ -375,7 +366,7 @@ async def series_lookup(request: Request, term: Optional[str] = Query(None), api
             "remotePoster": f"/api/v3/mediacover/{extract_clean_integer_id(item)}/poster-500.jpg",
             "added": "2026-01-01T00:00:00Z",
         } for item in res.json()]
-        return apply_absolute_urls_if_needed(data, request)
+        return ensure_relative_paths(data, request)
     except Exception:
         return []
 
@@ -392,7 +383,7 @@ async def get_single_series(request: Request, series_id: int, api_key: str = Dep
     series_obj = MedusaTranslator.to_sonarr_series(show)
     series_dict = series_obj.dict()
     log_debug(f"Returning series details for {series_id}: {series_dict}")
-    return apply_absolute_urls(series_dict, request)
+    return ensure_relative_paths(series_dict, request)
 
 @app.post("/api/v3/series")
 async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa_key)):
