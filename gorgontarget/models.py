@@ -25,6 +25,7 @@ class SonarrSeries(BaseModel):
     overview: str = ""
     year: int = 0
     images: List[Dict] = []
+    remotePoster: Optional[str] = None
     alternateTitles: List[Dict] = []
     genres: List[str] = []
     seriesType: str = "standard"

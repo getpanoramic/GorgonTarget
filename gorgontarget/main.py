@@ -141,7 +141,9 @@ async def core_all_series(api_key: str):
     
     sonarr_shows = []
     for show in medusa_shows:
-        sonarr_shows.append(MedusaTranslator.to_sonarr_series(show).dict())
+        series_obj = MedusaTranslator.to_sonarr_series(show)
+        log_debug(f"Translating show: {series_obj.title}, images: {series_obj.images}")
+        sonarr_shows.append(series_obj.dict())
 
     log_debug(f"OUTBOUND DATASET: Sent {len(sonarr_shows)} series objects with full image specifications.")
     return sonarr_shows
@@ -816,7 +818,13 @@ async def get_download_client_schema(api_key: str = Depends(get_medusa_key)):
 @app.get("/api/v3/config/ui")
 @app.get("/api/v3/config/host")
 @app.get("/api/v3/ping")
-@app.get("/api/v3/manualimport")
+@app.get("/api/v3/language")
+async def get_languages(api_key: str = Depends(get_medusa_key)):
+    return [
+        {"id": 1, "name": "English"},
+        {"id": 2, "name": "Portuguese"},
+        {"id": 3, "name": "Spanish"}
+    ]
 @app.get("/api/v3/notification")
 @app.get("/api/v3/importlist")
 @app.get("/api/v3/delayprofile")

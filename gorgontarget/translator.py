@@ -98,6 +98,7 @@ class MedusaTranslator:
                 {"coverType": "banner", "url": f"v3/mediacover/{medusa_id}/banner-500.jpg"},
                 {"coverType": "fanart", "url": f"v3/mediacover/{medusa_id}/fanart-500.jpg"}
             ],
+            remotePoster=f"/api/v3/mediacover/{medusa_id}/poster-500.jpg",
             seasons=seasons,
             statistics={
                 "episodeFileCount": total_episodes,
