@@ -33,17 +33,15 @@ class PathNormalizationMiddleware:
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"] == "http":
             path = scope.get("path", "")
+            
             # Print simplified request line
             print(f"[Middleware DEBUG] Incoming path: {path}", file=sys.stderr, flush=True)
             
-            # Replace double slashes with single slash
+            # Collapse double slashes and double-prefixing
             new_path = path.replace("//", "/")
+            new_path = new_path.replace("/api/api/", "/api/")
             
-            # Additional cleanup to ensure single /api/ prefix
-            if new_path.startswith("/api//"):
-                new_path = new_path.replace("/api//", "/api/")
-            
-            scope["path"] = new_path
+            scope["path"] = new_path.lower()
             print(f"[Middleware DEBUG] Normalized path: {new_path}", file=sys.stderr, flush=True)
 
         await self.app(scope, receive, send)
