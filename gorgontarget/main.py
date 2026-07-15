@@ -75,6 +75,7 @@ def build_sonarr_images(series_id: int, api_key: str = "") -> List[Dict[str, str
     ]
 
 
+
 def parse_medusa_size(size_str: str) -> int:
     """Converts '547.56 GB' or '1.39 TB' to bytes."""
     try:
@@ -262,8 +263,8 @@ async def get_media_cover(
     log_debug(f"Proxying visual cover asset: {medusa_asset_type} for series {series_id} (slug: {slug})")
 
     try:
-        # Fetch using shared async_client, passing API key
-        response = await async_client.get(target_url, params={"api_key": effective_key})
+        # Fetch using shared async_client, passing API key in headers
+        response = await async_client.get(target_url, headers=medusa_headers(effective_key))
         if response.status_code == 200:
             return StreamingResponse(
                 response.iter_bytes(), 
