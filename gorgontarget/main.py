@@ -6,7 +6,7 @@ import re
 import time
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, Header, HTTPException, Query, status, Depends
+from fastapi import FastAPI, Header, HTTPException, Query, status, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.types import ASGIApp, Scope, Receive, Send
@@ -279,10 +279,32 @@ async def root_index():
 async def get_system_status_v2(api_key: str = Depends(get_medusa_key)):
     return await core_system_status(api_key)
 
+# Helper to prepend absolute proxy URL to images
+def apply_absolute_urls(data: Any, request: Request) -> Any:
+    base_url = str(request.base_url).rstrip('/')
+    
+    def _fix_item(item: dict):
+        if "images" in item:
+            for img in item["images"]:
+                if "url" in img and img["url"].startswith("/"):
+                    img["url"] = f"{base_url}{img['url']}"
+                if "remoteUrl" in img and img["remoteUrl"].startswith("/"):
+                    img["remoteUrl"] = f"{base_url}{img['remoteUrl']}"
+        if "remotePoster" in item and item["remotePoster"] and item["remotePoster"].startswith("/"):
+            item["remotePoster"] = f"{base_url}{item['remotePoster']}"
+        return item
+
+    if isinstance(data, list):
+        return [_fix_item(item) for item in data]
+    elif isinstance(data, dict):
+        return _fix_item(data)
+    return data
+
 @app.get("/api/series")
 @app.get("/api/v3/series")
-async def get_all_series_v2(api_key: str = Depends(get_medusa_key)):
-    return await core_all_series(api_key)
+async def get_all_series_v2(request: Request, api_key: str = Depends(get_medusa_key)):
+    data = await core_all_series(api_key)
+    return apply_absolute_urls(data, request)
 
 @app.get("/api/v3/system/status")
 async def get_system_status_v3(api_key: str = Depends(get_medusa_key)):
@@ -316,13 +338,13 @@ async def get_custom_formats(api_key: str = Depends(get_medusa_key)):
     return []
 
 @app.get("/api/v3/series/lookup")
-async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depends(get_medusa_key)):
+async def series_lookup(request: Request, term: Optional[str] = Query(None), api_key: str = Depends(get_medusa_key)):
     if not term: return []
     clean_term = term.replace("tvdb:", "").strip() 
     try:
         res = await async_client.get("/api/v2/series/lookup", params={"q": clean_term, "indexer": "tvdb"}, headers=medusa_headers(api_key))
         if res.status_code != 200: return []
-        return [{
+        data = [{
             "title": item.get("title"),
             "tvdbId": extract_clean_integer_id(item),
             "imdbId": item.get("ids", {}).get("imdb", ""),
@@ -335,11 +357,12 @@ async def series_lookup(term: Optional[str] = Query(None), api_key: str = Depend
             "remotePoster": f"/api/v3/mediacover/{extract_clean_integer_id(item)}/poster-500.jpg",
             "added": "2026-01-01T00:00:00Z",
         } for item in res.json()]
+        return apply_absolute_urls(data, request)
     except Exception:
         return []
 
 @app.get("/api/v3/series/{series_id}")
-async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_key)):
+async def get_single_series(request: Request, series_id: int, api_key: str = Depends(get_medusa_key)):
     if series_id == 0:
         return {"id": 0, "title": "Initialization Stub", "tvdbId": 0, "year": 0, "imdbId": "", "images": [], "alternateTitles": [], "genres": [], "seriesType": "standard", "path": "/tv", "monitored": False, "added": "2026-01-01T00:00:00Z"}
     
@@ -351,7 +374,7 @@ async def get_single_series(series_id: int, api_key: str = Depends(get_medusa_ke
     series_obj = MedusaTranslator.to_sonarr_series(show)
     series_dict = series_obj.dict()
     log_debug(f"Returning series details for {series_id}: {series_dict}")
-    return series_dict
+    return apply_absolute_urls(series_dict, request)
 
 @app.post("/api/v3/series")
 async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa_key)):
