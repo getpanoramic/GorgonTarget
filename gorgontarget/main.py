@@ -76,6 +76,8 @@ def build_sonarr_images(series_id: int, api_key: str = "") -> List[Dict[str, str
 
 
 
+
+
 def parse_medusa_size(size_str: str) -> int:
     """Converts '547.56 GB' or '1.39 TB' to bytes."""
     try:
@@ -290,17 +292,24 @@ async def root_index():
 async def get_system_status_v2(api_key: str = Depends(get_medusa_key)):
     return await core_system_status(api_key)
 
-# Helper to ensure image URLs are relative paths (no leading slash)
-def ensure_relative_paths(data: Any, request: Request) -> Any:
+# Helper to prepend absolute proxy URL to images dynamically
+def apply_absolute_urls(data: Any, request: Request) -> Any:
+    # Dynamically detect the base URL from the incoming request
+    base_url = str(request.base_url).rstrip('/')
+    
     def _fix_item(item: dict):
         if "images" in item:
             for img in item["images"]:
-                if "url" in img and img["url"].startswith("/"):
-                    img["url"] = img["url"].lstrip("/")
-                if "remoteUrl" in img and img["remoteUrl"].startswith("/"):
-                    img["remoteUrl"] = img["remoteUrl"].lstrip("/")
-        if "remotePoster" in item and item["remotePoster"] and item["remotePoster"].startswith("/"):
-            item["remotePoster"] = item["remotePoster"].lstrip("/")
+                # Ensure it has a leading slash before prepending
+                path = img.get("url", "").lstrip("/")
+                img["url"] = f"{base_url}/{path}"
+                
+                path_rem = img.get("remoteUrl", "").lstrip("/")
+                img["remoteUrl"] = f"{base_url}/{path_rem}"
+        
+        if "remotePoster" in item and item["remotePoster"]:
+            path_post = item["remotePoster"].lstrip("/")
+            item["remotePoster"] = f"{base_url}/{path_post}"
         return item
 
     if isinstance(data, list):
@@ -315,7 +324,7 @@ async def get_all_series_v2(request: Request, api_key: str = Depends(get_medusa_
     user_agent = request.headers.get("user-agent", "unknown")
     log_debug(f"User-Agent: {user_agent}")
     data = await core_all_series(api_key)
-    return ensure_relative_paths(data, request)
+    return apply_absolute_urls(data, request)
 
 @app.get("/api/v3/system/status")
 async def get_system_status_v3(api_key: str = Depends(get_medusa_key)):
@@ -368,7 +377,7 @@ async def series_lookup(request: Request, term: Optional[str] = Query(None), api
             "remotePoster": f"/api/v3/mediacover/{extract_clean_integer_id(item)}/poster-500.jpg",
             "added": "2026-01-01T00:00:00Z",
         } for item in res.json()]
-        return ensure_relative_paths(data, request)
+        return apply_absolute_urls(data, request)
     except Exception:
         return []
 
