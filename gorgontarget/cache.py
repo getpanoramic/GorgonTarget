@@ -40,5 +40,7 @@ class AsyncTTLCache:
 
 # Singleton instances for different cache domains
 series_map_cache = AsyncTTLCache(ttl=3600)
+series_details_cache = AsyncTTLCache(ttl=3600)
+series_episodes_cache = AsyncTTLCache(ttl=3600)
 capability_cache = AsyncTTLCache(ttl=86400)
-series_list_cache = AsyncTTLCache(ttl=300)
+series_list_cache = AsyncTTLCache(ttl=3600)

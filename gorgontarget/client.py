@@ -2,7 +2,7 @@ import httpx
 import sys
 from typing import Dict, Any, List, Optional
 from .settings import settings
-from .cache import capability_cache, series_map_cache
+from .cache import capability_cache, series_map_cache, series_details_cache, series_episodes_cache
 from .translator import MedusaTranslator
 
 class MedusaClient:
@@ -65,6 +65,10 @@ class MedusaClient:
         return []
 
     async def get_series_by_id(self, series_id: int) -> Optional[Dict[str, Any]]:
+        # Attempt to retrieve from details cache first
+        cached_details = await series_details_cache.get(f"details_{series_id}")
+        if cached_details: return cached_details
+
         # Attempt to retrieve the slug from cache
         slug = await series_map_cache.get(f"map_{series_id}")
         if not slug:
@@ -74,7 +78,9 @@ class MedusaClient:
 
         res = await self.client.get(f"/api/v2/series/{slug}", headers=self.headers)
         if res.status_code == 200:
-            return res.json()
+            details = res.json()
+            await series_details_cache.set(f"details_{series_id}", details)
+            return details
         return None
 
     async def add_series(self, tvdb_id: int, root_path: str, title: str, monitored: bool) -> Optional[Dict[str, Any]]:
@@ -96,6 +102,10 @@ class MedusaClient:
             return {"id": tvdb_id, "title": title, "path": root_path}
         return None
     async def get_episodes(self, target_id: int) -> List[Dict[str, Any]]:
+        # Attempt to retrieve from episodes cache first
+        cached_episodes = await series_episodes_cache.get(f"episodes_{target_id}")
+        if cached_episodes: return cached_episodes
+
         # Attempt to retrieve the slug from cache
         slug = await series_map_cache.get(f"map_{target_id}")
         
@@ -125,7 +135,9 @@ class MedusaClient:
         res = await self.client.get(url, params={"limit": 1000}, headers=self.headers)
 
         if res.status_code == 200:
-            return res.json()
+            episodes = res.json()
+            await series_episodes_cache.set(f"episodes_{target_id}", episodes)
+            return episodes
 
         return []
 

@@ -309,11 +309,20 @@ def apply_absolute_urls(data: Any, request: Request) -> Any:
         return _fix_item(data)
     return data
 
+# Helper to prepend absolute proxy URL to images, with Bazarr-specific skipping
+def apply_absolute_urls_if_needed(data: Any, request: Request) -> Any:
+    user_agent = request.headers.get("user-agent", "").lower()
+    if "bazarr" in user_agent:
+        return data
+    return apply_absolute_urls_if_needed(data, request)
+
 @app.get("/api/series")
 @app.get("/api/v3/series")
 async def get_all_series_v2(request: Request, api_key: str = Depends(get_medusa_key)):
+    user_agent = request.headers.get("user-agent", "unknown")
+    log_debug(f"User-Agent: {user_agent}")
     data = await core_all_series(api_key)
-    return apply_absolute_urls(data, request)
+    return apply_absolute_urls_if_needed(data, request)
 
 @app.get("/api/v3/system/status")
 async def get_system_status_v3(api_key: str = Depends(get_medusa_key)):
@@ -366,7 +375,7 @@ async def series_lookup(request: Request, term: Optional[str] = Query(None), api
             "remotePoster": f"/api/v3/mediacover/{extract_clean_integer_id(item)}/poster-500.jpg",
             "added": "2026-01-01T00:00:00Z",
         } for item in res.json()]
-        return apply_absolute_urls(data, request)
+        return apply_absolute_urls_if_needed(data, request)
     except Exception:
         return []
 
