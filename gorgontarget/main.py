@@ -585,8 +585,22 @@ async def get_history(
         
         # Filter and transform
         filtered_records = []
+        
+        def map_event_type(status: str) -> str:
+            mapping = {
+                "Snatched": "grabbed",
+                "Downloaded": "downloadFolderImported",
+                "Failed": "downloadFailed"
+            }
+            return mapping.get(status, "unknown")
+
+        def parse_date(date_int: int) -> str:
+            try:
+                return datetime.strptime(str(date_int), '%Y%m%d%H%M%S').isoformat() + 'Z'
+            except:
+                return "2026-01-01T00:00:00Z"
+
         for i, item in enumerate(data):
-            log_debug(f"Processing history item {i}: {item}")
             series_id = int(item.get("series_id", 0))
             
             if target_series_ids and series_id not in target_series_ids:
@@ -595,8 +609,8 @@ async def get_history(
             filtered_records.append({
                 "id": i + 1,
                 "sourceTitle": item.get("show_name", "Unknown"),
-                "eventType": item.get("action", "unknown"),
-                "date": item.get("date", "2026-01-01T00:00:00Z"),
+                "eventType": map_event_type(item.get("statusName", "")),
+                "date": parse_date(item.get("actionDate", 0)),
                 "seriesId": series_id,
                 "episodeId": int(item.get("episode_id", 0)),
                 "data": {"seriesId": series_id, "episodeId": int(item.get("episode_id", 0))}
