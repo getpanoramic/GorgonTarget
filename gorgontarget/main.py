@@ -292,30 +292,8 @@ async def root_index():
 async def get_system_status_v2(api_key: str = Depends(get_medusa_key)):
     return await core_system_status(api_key)
 
-# Helper to prepend absolute proxy URL to images dynamically
-def apply_absolute_urls(data: Any, request: Request) -> Any:
-    # Dynamically detect the base URL from the incoming request
-    base_url = str(request.base_url).rstrip('/')
-    
-    def _fix_item(item: dict):
-        if "images" in item:
-            for img in item["images"]:
-                # Ensure it has a leading slash before prepending
-                path = img.get("url", "").lstrip("/")
-                img["url"] = f"{base_url}/{path}"
-                
-                path_rem = img.get("remoteUrl", "").lstrip("/")
-                img["remoteUrl"] = f"{base_url}/{path_rem}"
-        
-        if "remotePoster" in item and item["remotePoster"]:
-            path_post = item["remotePoster"].lstrip("/")
-            item["remotePoster"] = f"{base_url}/{path_post}"
-        return item
-
-    if isinstance(data, list):
-        return [_fix_item(item) for item in data]
-    elif isinstance(data, dict):
-        return _fix_item(data)
+# Helper to pass data through without modifying URLs
+def no_op_urls(data: Any, request: Request) -> Any:
     return data
 
 @app.get("/api/series")
@@ -324,7 +302,7 @@ async def get_all_series_v2(request: Request, api_key: str = Depends(get_medusa_
     user_agent = request.headers.get("user-agent", "unknown")
     log_debug(f"User-Agent: {user_agent}")
     data = await core_all_series(api_key)
-    return apply_absolute_urls(data, request)
+    return no_op_urls(data, request)
 
 @app.get("/api/v3/system/status")
 async def get_system_status_v3(api_key: str = Depends(get_medusa_key)):
@@ -377,7 +355,7 @@ async def series_lookup(request: Request, term: Optional[str] = Query(None), api
             "remotePoster": f"/api/v3/mediacover/{extract_clean_integer_id(item)}/poster-500.jpg",
             "added": "2026-01-01T00:00:00Z",
         } for item in res.json()]
-        return apply_absolute_urls(data, request)
+        return no_op_urls(data, request)
     except Exception:
         return []
 
@@ -394,7 +372,7 @@ async def get_single_series(request: Request, series_id: int, api_key: str = Dep
     series_obj = MedusaTranslator.to_sonarr_series(show)
     series_dict = series_obj.dict()
     log_debug(f"Returning series details for {series_id}: {series_dict}")
-    return ensure_relative_paths(series_dict, request)
+    return no_op_urls(series_dict, request)
 
 @app.post("/api/v3/series")
 async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa_key)):
