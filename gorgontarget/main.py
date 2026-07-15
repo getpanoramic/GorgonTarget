@@ -603,6 +603,7 @@ async def get_history(
             })
         
         log_debug(f"Total filtered history records: {len(filtered_records)}")
+        total_records = len(filtered_records)
         start_idx = (page - 1) * pageSize
         end_idx = start_idx + pageSize
         page_records = filtered_records[start_idx:end_idx]
