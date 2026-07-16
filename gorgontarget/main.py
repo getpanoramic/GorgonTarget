@@ -668,7 +668,7 @@ async def get_history(
                     "episodeNumber": episode,
                     "title": item.get("episodeTitle", "Unknown Episode")
                 },
-                "data": {"seriesId": str(series_id), "episodeId": str(episode_id)}
+                "data": {"seriesId": series_id, "episodeId": episode_id}
             })
         
         log_debug(f"Total filtered history records: {len(filtered_records)}")
