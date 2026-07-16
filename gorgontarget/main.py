@@ -695,30 +695,22 @@ async def get_history(
         # Filter and transform
         filtered_records = []
         
-        def map_event_type(status: str) -> int:
-            # Sonarr History Event Types (integer based)
-            # 1=Unknown, 2=Grabbed, 3=EpisodeFileDeleted, 4=EpisodeFileAdded, ...
-            mapping = {
-                "Snatched": 2,
-                "Downloaded": 4,
-                "Failed": 10 # or similar appropriate mapping
-            }
-            return mapping.get(status, 1)
-
-        def parse_date(date_int: int) -> str:
-            try:
-                return datetime.strptime(str(date_int), '%Y%m%d%H%M%S').isoformat() + 'Z'
-            except:
-                return "2026-01-01T00:00:00Z"
+        # ... (keep helper functions map_event_type, parse_date, extract_id_from_str)
         
-        def extract_id_from_str(id_str: str) -> int:
-            """Extract numeric ID from strings like 'tvdb71663' or 'tmdb75219'."""
-            import re
-            match = re.search(r'\d+', str(id_str))
-            return int(match.group()) if match else 0
+        # Add a proper date parsing helper for sorting
+        def parse_date_for_sort(date_int: int) -> datetime:
+            try:
+                return datetime.strptime(str(date_int), '%Y%m%d%H%M%S')
+            except:
+                return datetime(2026, 1, 1)
 
+        # Before transforming, sort the raw data to ensure chronological order from Medusa
+        # Medusa's history seems to be naturally older-to-newer or unordered, 
+        # but let's sort descending by actionDate.
+        data.sort(key=lambda x: parse_date_for_sort(x.get("actionDate", 0)), reverse=True)
 
         for i, item in enumerate(data):
+            # ... (rest of the transformation logic remains the same)
             # Extract identifiers
             series_id = extract_id_from_str(item.get("series", "0"))
             raw_episode_id = item.get("episode_id", 0)
