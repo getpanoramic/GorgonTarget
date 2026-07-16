@@ -729,13 +729,22 @@ async def get_history(
         # Filter and transform
         filtered_records = []
         
+        # Medusa returns a list of grouped items, need to flatten them first
+        all_records = []
+        for group in data:
+            for row in group.get("rows", []):
+                # Enrich row with data from group
+                row["showTitle"] = group.get("showTitle") or row.get("showTitle", "Unknown")
+                all_records.append(row)
+        
         # Before transforming, sort the raw data to ensure chronological order from Medusa
-        data.sort(key=lambda x: parse_date_for_sort(x.get("actionDate", 0)), reverse=True)
+        all_records.sort(key=lambda x: parse_date_for_sort(x.get("actionDate", 0)), reverse=True)
 
-        for i, item in enumerate(data):
-            # Extract identifiers
-            series_id = extract_id_from_str(item.get("series", "0"))
-            raw_episode_id = item.get("episode_id", 0)
+        for i, item in enumerate(all_records):
+            # Extract identifiers - use showSlug for series mapping
+            series_id_str = item.get("showSlug", "0")
+            series_id = extract_id_from_str(series_id_str)
+            raw_episode_id = item.get("id", 0)
             show_title = item.get("showTitle", "Unknown")
             season = item.get("season", 0)
             episode = item.get("episode", 0)
