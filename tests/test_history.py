@@ -3,7 +3,7 @@ from unittest.mock import patch
 import httpx
 
 @pytest.mark.asyncio
-@patch("gorgontarget.main.async_client.get")
+@patch("gorgontarget.routes.history.async_client.get")
 async def test_get_history_transformation(mock_get, async_app_client):
     """
     Verifies that raw history data is correctly transformed,

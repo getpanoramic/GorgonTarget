@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch
-from gorgontarget.main import extract_clean_year, extract_clean_integer_id
+from gorgontarget.utils import extract_clean_year, extract_clean_integer_id
 
 @pytest.mark.asyncio
 async def test_root_index(async_app_client):
@@ -15,7 +15,7 @@ async def test_missing_auth_rejected(async_app_client):
     assert "Missing API Key" in response.json()["detail"]
 
 @pytest.mark.asyncio
-@patch("gorgontarget.main.core_system_status")
+@patch("gorgontarget.routes.system.core_system_status")
 async def test_system_status(mock_core_status, async_app_client):
     # Mock the internal function so no real network requests are made
     mock_core_status.return_value = {
@@ -38,7 +38,7 @@ async def test_system_status(mock_core_status, async_app_client):
     assert data["osName"] == "linux"
 
 @pytest.mark.asyncio
-@patch("gorgontarget.main.core_all_series")
+@patch("gorgontarget.routes.series.core_all_series")
 async def test_get_series(mock_core_series, async_app_client):
     # Mock the new core_all_series function
     mock_core_series.return_value = [{
