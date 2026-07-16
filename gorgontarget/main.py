@@ -734,10 +734,13 @@ async def get_history(
 
         for i, item in enumerate(data):
             # Extract identifiers
-            series_id = extract_id_from_str(item.get("series", "0"))
+            series_raw = item.get("series")
+            series_id = extract_id_from_str(str(series_raw))
             raw_episode_id = item.get("episode_id", 0)
-            # Prioritize showTitle from Medusa response, fallback to Unknown
             show_title = item.get("showTitle") or item.get("series_title") or "Unknown"
+            
+            log_debug(f"Processing history item {i}: series_raw='{series_raw}', resolved_series_id={series_id}, show_title='{show_title}'")
+            
             season = item.get("season", 0)
             episode = item.get("episode", 0)
             
@@ -783,7 +786,7 @@ async def get_history(
                     "hasFile": True,
                     "monitored": True
                 },
-                "data": {"seriesId": series_id, "episodeId": episode_id}
+                "data": {"seriesId": str(series_id), "episodeId": str(episode_id)}
             })
         
         # No additional filtering for pagination, just return all processed records
