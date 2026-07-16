@@ -653,6 +653,11 @@ async def get_history(
         end_idx = start_idx + pageSize
         page_records = filtered_records[start_idx:end_idx]
         
+        log_debug(f"Returning {len(page_records)} records to client.")
+        # Log the first record if it exists for structure inspection
+        if page_records:
+            log_debug(f"Sample record structure: {page_records[0]}")
+        
         return {
             "page": page, 
             "pageSize": pageSize, 
