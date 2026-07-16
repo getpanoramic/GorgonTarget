@@ -41,12 +41,12 @@ async def test_get_history_transformation(mock_get, async_app_client):
     
     assert len(data["records"]) == 2
     
-    # Validate Item 1: Extracted seriesId, derived episodeId (using id as proxy)
+    # Validate Item 1: This is now 64923 (index 0 after sort)
     item1 = data["records"][0]
     assert item1["seriesId"] == 71663
-    assert item1["episodeId"] == 64922 # Should use item id
+    assert item1["episodeId"] == 123
     
-    # Validate Item 2: Extracted seriesId, used provided episode_id
+    # Validate Item 2: This is now 64922 (index 1 after sort)
     item2 = data["records"][1]
     assert item2["seriesId"] == 71663
-    assert item2["episodeId"] == 123 # Should use explicit episode_id
+    assert item2["episodeId"] == 64922 # Should use item id
