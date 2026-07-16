@@ -599,21 +599,32 @@ async def get_history(
                 return datetime.strptime(str(date_int), '%Y%m%d%H%M%S').isoformat() + 'Z'
             except:
                 return "2026-01-01T00:00:00Z"
+        
+        def extract_id_from_str(id_str: str) -> int:
+            """Extract numeric ID from strings like 'tvdb71663' or 'tmdb75219'."""
+            import re
+            match = re.search(r'\d+', str(id_str))
+            return int(match.group()) if match else 0
+
 
         for i, item in enumerate(data):
-            series_id = int(item.get("series_id", 0))
+            # Extract identifiers
+            series_id = extract_id_from_str(item.get("series", "0"))
+            raw_episode_id = item.get("episode_id", 0)
+            # If episode_id is missing, use the unique history item id as a proxy
+            episode_id = int(raw_episode_id) if raw_episode_id else int(item.get("id", i + 1))
             
             if target_series_ids and series_id not in target_series_ids:
                 continue
                 
             filtered_records.append({
-                "id": i + 1,
+                "id": int(item.get("id", i + 1)),
                 "sourceTitle": item.get("show_name", "Unknown"),
                 "eventType": map_event_type(item.get("statusName", "")),
                 "date": parse_date(item.get("actionDate", 0)),
                 "seriesId": series_id,
-                "episodeId": int(item.get("episode_id", 0)),
-                "data": {"seriesId": series_id, "episodeId": int(item.get("episode_id", 0))}
+                "episodeId": episode_id,
+                "data": {"seriesId": series_id, "episodeId": episode_id}
             })
         
         log_debug(f"Total filtered history records: {len(filtered_records)}")
