@@ -652,20 +652,27 @@ async def get_history(
                 "episodeId": episode_id,
                 "seriesId": series_id,
                 "sourceTitle": show_title,
-                "eventType": map_event_type(item.get("statusName", "")),
+                "eventType": "grabbed" if item.get("statusName") == "Snatched" else "downloadFolderImported",
                 "date": parse_date(item.get("actionDate", 0)),
                 "quality": {
                     "quality": {
                         "id": int(item.get("quality", 0)),
-                        "name": "Unknown"
+                        "name": "Unknown",
+                        "source": "unknown",
+                        "resolution": 0
                     },
-                    "revision": {"version": 1, "real": 0}
+                    "revision": {"version": 1, "real": 0, "isRepack": False}
                 },
                 "languages": [{"id": 1, "name": "English"}],
                 "downloadId": item.get("infoHash", ""),
+                "customFormats": [],
+                "customFormatScore": 0,
+                "qualityCutoffNotMet": False,
                 "series": {
                     "id": series_id,
-                    "title": show_title
+                    "title": show_title,
+                    "status": "continuing",
+                    "images": []
                 },
                 "episode": {
                     "id": episode_id,
@@ -673,7 +680,8 @@ async def get_history(
                     "seasonNumber": season,
                     "episodeNumber": episode,
                     "title": item.get("episodeTitle", "Unknown Episode"),
-                    "hasFile": True
+                    "hasFile": True,
+                    "monitored": True
                 },
                 "data": {"seriesId": series_id, "episodeId": episode_id}
             })
