@@ -663,14 +663,19 @@ async def get_history(
                 },
                 "languages": [{"id": 1, "name": "English"}],
                 "downloadId": item.get("infoHash", ""),
-                "series": {"title": show_title},
+                "series": {
+                    "id": series_id,
+                    "title": show_title
+                },
                 "episode": {
                     "id": episode_id,
+                    "seriesId": series_id,
                     "seasonNumber": season,
                     "episodeNumber": episode,
-                    "title": item.get("episodeTitle", "Unknown Episode")
+                    "title": item.get("episodeTitle", "Unknown Episode"),
+                    "hasFile": True
                 },
-                "data": {"seriesId": str(series_id), "episodeId": str(episode_id)}
+                "data": {"seriesId": series_id, "episodeId": episode_id}
             })
         
         log_debug(f"Total filtered history records: {len(filtered_records)}")
