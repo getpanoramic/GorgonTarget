@@ -350,7 +350,14 @@ async def get_language_profiles(api_key: str = Depends(get_medusa_key)):
 
 @app.get("/api/v3/rootfolder")
 async def get_root_folders(api_key: str = Depends(get_medusa_key)):
-    return [{"id": 1, "path": "/tv", "accessible": True, "freeSpace": 500000000000, "unmappedFolders": []}]
+    # Return a schema-compliant response
+    return [{
+        "id": 1,
+        "path": "/tv",
+        "accessible": True,
+        "freeSpace": 500000000000,
+        "unmappedFolders": []
+    }]
 
 @app.get("/api/v3/filesystem")
 async def get_filesystem(path: Optional[str] = Query(None), api_key: str = Depends(get_medusa_key)):

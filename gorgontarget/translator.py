@@ -100,7 +100,6 @@ class MedusaTranslator:
                 {"coverType": "banner", "url": f"/api/v3/mediacover/{medusa_id}/banner-500.jpg{key_param}", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/banner-500.jpg{key_param}"},
                 {"coverType": "fanart", "url": f"/api/v3/mediacover/{medusa_id}/fanart-500.jpg{key_param}", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/fanart-500.jpg{key_param}"}
             ],
-
             remotePoster=f"/api/v3/mediacover/{medusa_id}/poster-500.jpg{key_param}",
             seasons=seasons,
             statistics={
@@ -109,7 +108,13 @@ class MedusaTranslator:
                 "totalEpisodeCount": total_episodes,
                 "sizeOnDisk": 0,
                 "percentOfEpisodes": percent_downloaded
-            }
+            },
+            # Added comprehensive mapping
+            network=medusa_show.get("network", "Unknown"),
+            genres=medusa_show.get("genres", []),
+            ratings={"votes": 0, "value": float(medusa_show.get("rating", 0.0))},
+            certification=medusa_show.get("certification", None),
+            tags=[]
         )
 
 
