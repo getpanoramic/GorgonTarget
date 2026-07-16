@@ -683,8 +683,15 @@ async def get_history(
         if seriesIds:
             target_series_ids = {int(i.strip()) for i in seriesIds.split(",") if i.strip().isdigit()}
             
-        # Medusa's history endpoint
-        res = await async_client.get("/api/v2/history", headers=medusa_headers(api_key))
+        # Medusa's history endpoint with specific query params
+        params = {
+            "page": page,
+            "limit": pageSize,
+            "sort": '[{"field":"date","type":"desc"}]',
+            "filter": "{}",
+            "compact": "true"
+        }
+        res = await async_client.get("/api/v2/history", params=params, headers=medusa_headers(api_key))
         if res.status_code != 200:
             log_debug(f"History fetch failed: {res.status_code}")
             return {"page": 1, "pageSize": pageSize, "totalRecords": 0, "records": []}
@@ -763,22 +770,16 @@ async def get_history(
                 "data": {"seriesId": series_id, "episodeId": episode_id}
             })
         
-        log_debug(f"Total filtered history records: {len(filtered_records)}")
-        total_records = len(filtered_records)
-        start_idx = (page - 1) * pageSize
-        end_idx = start_idx + pageSize
-        page_records = filtered_records[start_idx:end_idx]
+        # No additional filtering for pagination, just return all processed records
+        # as Medusa API already handled the limit/page for us.
         
-        log_debug(f"Returning {len(page_records)} records to client.")
-        # Log the first record if it exists for structure inspection
-        if page_records:
-            log_debug(f"Sample record structure: {page_records[0]}")
+        log_debug(f"Returning {len(filtered_records)} records to client.")
         
         return {
             "page": page, 
             "pageSize": pageSize, 
-            "totalRecords": total_records, 
-            "records": page_records
+            "totalRecords": len(filtered_records), 
+            "records": filtered_records
         }
     except Exception as e:
         log_debug(f"History exception: {str(e)}")

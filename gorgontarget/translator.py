@@ -112,7 +112,7 @@ class MedusaTranslator:
             # Added comprehensive mapping
             network=medusa_show.get("network", "Unknown"),
             genres=medusa_show.get("genres", []),
-            ratings={"votes": 0, "value": float(medusa_show.get("rating", 0.0))},
+            ratings={"votes": 0, "value": float(medusa_show.get("rating") if isinstance(medusa_show.get("rating"), (int, float, str)) else 0.0)},
             certification=medusa_show.get("certification", None),
             tags=[]
         )
