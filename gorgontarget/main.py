@@ -716,7 +716,7 @@ async def get_history(
             "limit": pageSize,
             "sort": '[{"field":"date","type":"desc"}]',
             "filter": "{}",
-            "compact": "true"
+            "compact": "false"
         }
         res = await async_client.get("/api/v2/history", params=params, headers=medusa_headers(api_key))
         if res.status_code != 200:
@@ -736,7 +736,8 @@ async def get_history(
             # Extract identifiers
             series_id = extract_id_from_str(item.get("series", "0"))
             raw_episode_id = item.get("episode_id", 0)
-            show_title = item.get("showTitle", "Unknown")
+            # Prioritize showTitle from Medusa response, fallback to Unknown
+            show_title = item.get("showTitle") or item.get("series_title") or "Unknown"
             season = item.get("season", 0)
             episode = item.get("episode", 0)
             
