@@ -716,7 +716,7 @@ async def get_history(
             "limit": pageSize,
             "sort": '[{"field":"date","type":"desc"}]',
             "filter": "{}",
-            "compact": "true"
+            "compact": "false"
         }
         res = await async_client.get("/api/v2/history", params=params, headers=medusa_headers(api_key))
         if res.status_code != 200:
