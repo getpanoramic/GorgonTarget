@@ -391,20 +391,62 @@ async def series_lookup(request: Request, term: Optional[str] = Query(None), api
 @app.get("/api/v3/series/{series_id}")
 async def get_single_series(request: Request, series_id: int, api_key: str = Depends(get_medusa_key)):
     if series_id == 0:
-        return {"id": 0, "title": "Initialization Stub", "tvdbId": 0, "year": 0, "imdbId": "", "images": [], "alternateTitles": [], "genres": [], "seriesType": "standard", "path": "/tv", "monitored": False, "added": "2026-01-01T00:00:00Z"}
+        return {"id": 0, "title": "Initialization Stub", "tvdbId": 0, "year": 0, "imdbId": "", "images": [], "alternateTitles": [], "genres": [], "seriesType": "standard", "path": "/tv", "monitored": False, "added": "2026-07-16T12:01:19.954Z", "seasons": [], "statistics": {"seasonCount": 0, "episodeFileCount": 0, "episodeCount": 0, "totalEpisodeCount": 0, "sizeOnDisk": 0}}
     
     client = MedusaClient(api_key)
     show = await client.get_series_by_id(series_id)
     if not show:
         raise HTTPException(status_code=404, detail="Series not found")
         
-    series_obj = MedusaTranslator.to_sonarr_series(show)
-    series_dict = series_obj.dict()
-    # Add dummy season to fix client loading issues
-    if "seasons" not in series_dict or not series_dict["seasons"]:
-        series_dict["seasons"] = [{"seasonNumber": 1, "monitored": True, "statistics": {"episodeFileCount": 0, "episodeCount": 0, "totalEpisodeCount": 0, "sizeOnDisk": 0, "percentOfEpisodes": 0}, "images": []}]
+    # Build comprehensive SeriesResource
+    series_dict = {
+        "id": series_id,
+        "title": show.get("title", "Unknown"),
+        "alternateTitles": [],
+        "sortTitle": show.get("title", "").lower(),
+        "status": "continuing",
+        "ended": False,
+        "profileName": "Medusa Profile",
+        "overview": show.get("overview", ""),
+        "nextAiring": None,
+        "previousAiring": None,
+        "network": "Medusa",
+        "airTime": None,
+        "images": build_sonarr_images(series_id, api_key),
+        "originalLanguage": {"id": 1, "name": "English"},
+        "remotePoster": None,
+        "seasons": [{"seasonNumber": 1, "monitored": True, "statistics": {"episodeFileCount": 0, "episodeCount": 0, "totalEpisodeCount": 0, "sizeOnDisk": 0, "percentOfEpisodes": 0}, "images": []}],
+        "year": extract_clean_year(show),
+        "path": show.get("location", "/tv"),
+        "qualityProfileId": 1,
+        "seasonFolder": True,
+        "monitored": True,
+        "monitorNewItems": "all",
+        "useSceneNumbering": False,
+        "runtime": 30,
+        "tvdbId": series_id,
+        "tvRageId": 0,
+        "tvMazeId": 0,
+        "tmdbId": 0,
+        "firstAired": None,
+        "lastAired": None,
+        "seriesType": "standard",
+        "cleanTitle": show.get("title", "").lower(),
+        "imdbId": "",
+        "titleSlug": show.get("title", "").lower().replace(" ", "-"),
+        "rootFolderPath": "/tv",
+        "folder": show.get("title", ""),
+        "certification": None,
+        "genres": [],
+        "tags": [],
+        "added": "2026-07-16T12:01:19.954Z",
+        "addOptions": {"ignoreEpisodesWithFiles": True, "ignoreEpisodesWithoutFiles": True, "monitor": "all", "searchForMissingEpisodes": True, "searchForCutoffUnmetEpisodes": True},
+        "ratings": {"votes": 0, "value": 0.0},
+        "statistics": {"seasonCount": 1, "episodeFileCount": 0, "episodeCount": 0, "totalEpisodeCount": 0, "sizeOnDisk": 0, "percentOfEpisodes": 0},
+        "episodesChanged": False
+    }
         
-    log_debug(f"Returning series details for {series_id}: {series_dict}")
+    log_debug(f"Returning series details for {series_id}")
     return apply_absolute_urls(series_dict, request)
 
 @app.post("/api/v3/series")
@@ -495,10 +537,39 @@ async def get_single_episode(episode_id: int, includeEpisodeFile: bool = Query(F
             translated = MedusaTranslator.to_sonarr_episode(ep, series_id)
             if translated.id == episode_id:
                 ep_dict = translated.dict()
-                if not includeEpisodeFile:
-                    ep_dict.pop("episodeFile", None)
-                log_debug(f"get_single_episode returning: {ep_dict}")
-                return ep_dict
+                
+                # Construct a more complete EpisodeResource object
+                compliant_ep = {
+                    "id": ep_dict.get("id", episode_id),
+                    "seriesId": ep_dict.get("seriesId", series_id),
+                    "tvdbId": ep_dict.get("tvdbId", 0),
+                    "episodeFileId": ep_dict.get("episodeFileId", 0),
+                    "seasonNumber": ep_dict.get("seasonNumber", 0),
+                    "episodeNumber": ep_dict.get("episodeNumber", 0),
+                    "title": ep_dict.get("title", "Unknown"),
+                    "airDate": ep_dict.get("airDate"),
+                    "airDateUtc": ep_dict.get("airDateUtc"),
+                    "runtime": ep_dict.get("runtime", 0),
+                    "hasFile": ep_dict.get("hasFile", False),
+                    "monitored": ep_dict.get("monitored", True)
+                }
+
+                # Include episodeFile if requested and available
+                if includeEpisodeFile and ep_dict.get("episodeFile"):
+                    ef = ep_dict["episodeFile"]
+                    compliant_ep["episodeFile"] = {
+                        "id": ef.get("id", 0),
+                        "seriesId": series_id,
+                        "seasonNumber": ef.get("seasonNumber", compliant_ep["seasonNumber"]),
+                        "relativePath": ef.get("relativePath", ""),
+                        "path": ef.get("path", ""),
+                        "size": ef.get("size", 0),
+                        "dateAdded": ef.get("dateAdded", "2026-01-01T00:00:00Z"),
+                        "quality": compliant_ep.get("quality", {"quality": {"id": 1, "name": "Unknown"}, "revision": {"version": 1, "real": 0, "isRepack": False}})
+                    }
+
+                log_debug(f"get_single_episode returning: {compliant_ep}")
+                return compliant_ep
     
     log_debug(f"get_single_episode: Episode {episode_id} not found.")
     raise HTTPException(status_code=404, detail="Episode not found")
