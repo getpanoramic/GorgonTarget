@@ -401,7 +401,7 @@ async def get_single_series(request: Request, series_id: int, api_key: str = Dep
     series_obj = MedusaTranslator.to_sonarr_series(show)
     series_dict = series_obj.dict()
     log_debug(f"Returning series details for {series_id}: {series_dict}")
-    return no_op_urls(series_dict, request)
+    return apply_absolute_urls(series_dict, request)
 
 @app.post("/api/v3/series")
 async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa_key)):
