@@ -735,6 +735,7 @@ async def get_history(
             for row in group.get("rows", []):
                 # Enrich row with data from group
                 row["showTitle"] = group.get("showTitle") or row.get("showTitle", "Unknown")
+                row["showSlug"] = group.get("showSlug") or row.get("showSlug", "0")
                 all_records.append(row)
         
         # Before transforming, sort the raw data to ensure chronological order from Medusa
@@ -744,13 +745,14 @@ async def get_history(
             # Extract identifiers - use showSlug for series mapping
             series_id_str = item.get("showSlug", "0")
             series_id = extract_id_from_str(series_id_str)
+            
             raw_episode_id = item.get("id", 0)
             show_title = item.get("showTitle", "Unknown")
             season = item.get("season", 0)
             episode = item.get("episode", 0)
             
             # If episode_id is missing, use the unique history item id as a proxy
-            episode_id = int(raw_episode_id) if raw_episode_id else int(item.get("id", i + 1))
+            episode_id = int(item.get("episode_id", 0)) if item.get("episode_id") else int(item.get("id", i + 1))
             
             if target_series_ids and series_id not in target_series_ids:
                 continue
@@ -780,7 +782,7 @@ async def get_history(
                     "id": series_id,
                     "title": show_title,
                     "status": "continuing",
-                    "images": []
+                    "images": build_sonarr_images(series_id)
                 },
                 "episode": {
                     "id": episode_id,
@@ -789,7 +791,14 @@ async def get_history(
                     "episodeNumber": episode,
                     "title": item.get("episodeTitle", "Unknown Episode"),
                     "hasFile": True,
-                    "monitored": True
+                    "monitored": True,
+                    "series": {
+                        "id": series_id,
+                        "title": show_title,
+                        "status": "continuing",
+                        "images": build_sonarr_images(series_id)
+                    },
+                    "images": build_sonarr_images(series_id)
                 },
                 "data": {"seriesId": series_id, "episodeId": episode_id}
             })

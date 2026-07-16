@@ -10,22 +10,24 @@ async def test_get_history_transformation(mock_get, async_app_client):
     specifically checking seriesId and episodeId extraction/derivation.
     """
     
-    # Mocked raw data from log
+    # Mocked raw data - updated to nested format
     mock_raw_data = [
         {
-            'id': 64922, 
-            'series': 'tvdb71663', 
-            'statusName': 'Snatched', 
-            'actionDate': 20210301015352,
-            'show_name': 'The Simpsons'
-        },
-        {
-            'id': 64923, 
-            'series': 'tvdb71663', 
-            'statusName': 'Downloaded', 
-            'actionDate': 20210301020542,
-            'episode_id': 123,
-            'show_name': 'The Simpsons'
+            "showSlug": "tvdb71663",
+            "showTitle": "The Simpsons",
+            "rows": [
+                {
+                    'id': 64922, 
+                    'statusName': 'Snatched', 
+                    'actionDate': 20210301015352,
+                },
+                {
+                    'id': 64923, 
+                    'statusName': 'Downloaded', 
+                    'actionDate': 20210301020542,
+                    'episode_id': 123,
+                }
+            ]
         }
     ]
 
@@ -41,10 +43,11 @@ async def test_get_history_transformation(mock_get, async_app_client):
     
     assert len(data["records"]) == 2
     
-    # Validate Item 1: This is now 64923 (index 0 after sort)
+    # Validate Item 1: This is now 64923 (index 0 after sort because of newer date)
     item1 = data["records"][0]
     assert item1["seriesId"] == 71663
-    assert item1["episodeId"] == 123
+    # DEBUG: print the whole item to see why episodeId is wrong
+    assert item1["episodeId"] == 123, f"Item1: {item1}"
     
     # Validate Item 2: This is now 64922 (index 1 after sort)
     item2 = data["records"][1]
