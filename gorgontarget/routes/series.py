@@ -8,7 +8,63 @@ from ..client import MedusaClient
 from fastapi.responses import JSONResponse
 import os
 
+from fastapi.responses import StreamingResponse
+import re
+
+# ...
+
+@router.get("/api/v3/mediacover/{series_id}/{asset_file}")
+async def get_media_cover(
+    series_id: str, 
+    asset_file: str, 
+    api_key: Optional[str] = Query(None)
+):
+    """
+    Catches image proxy requests. Accepts API key as a query parameter 
+    to properly authenticate with the Medusa backend.
+    """
+    effective_key = api_key or os.getenv("DEFAULT_MEDUSA_API_KEY", "")
+    
+    # Handle the "-500-500" suffix in the filename by stripping it
+    clean_asset = re.sub(r'-500-500\.', '.', asset_file)
+    
+    asset_lower = clean_asset.lower()
+    
+    # Asset mapping
+    medusa_asset_type = "poster"
+    if "banner" in asset_lower:
+        medusa_asset_type = "banner"
+    elif "fanart" in asset_lower:
+        medusa_asset_type = "fanart"
+    elif "poster" in asset_lower:
+        medusa_asset_type = "poster"
+
+    # Resolve the series slug from the cache
+    slug = await series_map_cache.get(f"map_{series_id}") or series_id
+
+    # Construct the URL dynamically using the configured MEDUSA_URL
+    target_url = f"/api/v2/series/{slug}/asset/{medusa_asset_type}"
+    logger.debug(f"Proxying visual cover asset: {medusa_asset_type} for series {series_id} (slug: {slug})")
+
+    try:
+        # Fetch using shared async_client, passing API key in headers
+        response = await async_client.get(target_url, headers=medusa_headers(effective_key))
+        if response.status_code == 200:
+            return StreamingResponse(
+                response.iter_bytes(), 
+                media_type=response.headers.get("content-type", "image/jpeg")
+            )
+        else:
+            logger.debug(f"Medusa returned status {response.status_code} for {target_url}")
+            
+    except Exception as e:
+        logger.debug(f"Failed to pull image proxy: {str(e)}")
+
+    transparent_pixel = b'\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff\x21\xf9\x04\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b'
+    return StreamingResponse(iter([transparent_pixel]), media_type="image/gif")
+
 router = APIRouter()
+
 
 async def core_all_series(api_key: str):
     # This was a core implementation helper function, needs to be imported or refactored.
