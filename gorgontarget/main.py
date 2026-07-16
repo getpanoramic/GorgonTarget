@@ -610,13 +610,15 @@ async def get_history(
         # Filter and transform
         filtered_records = []
         
-        def map_event_type(status: str) -> str:
+        def map_event_type(status: str) -> int:
+            # Sonarr History Event Types (integer based)
+            # 1=Unknown, 2=Grabbed, 3=EpisodeFileDeleted, 4=EpisodeFileAdded, ...
             mapping = {
-                "Snatched": "grabbed",
-                "Downloaded": "downloadFolderImported",
-                "Failed": "downloadFailed"
+                "Snatched": 2,
+                "Downloaded": 4,
+                "Failed": 10 # or similar appropriate mapping
             }
-            return mapping.get(status, "unknown")
+            return mapping.get(status, 1)
 
         def parse_date(date_int: int) -> str:
             try:
@@ -647,13 +649,18 @@ async def get_history(
                 
             filtered_records.append({
                 "id": int(item.get("id", i + 1)),
+                "episodeId": episode_id,
+                "seriesId": series_id,
                 "sourceTitle": show_title,
                 "eventType": map_event_type(item.get("statusName", "")),
                 "date": parse_date(item.get("actionDate", 0)),
-                "seriesId": series_id,
-                "episodeId": episode_id,
-                "seasonNumber": season,
-                "episodeNumber": episode,
+                "quality": {
+                    "quality": {
+                        "id": int(item.get("quality", 0)),
+                        "name": "Unknown"
+                    },
+                    "revision": {"version": 1, "real": 0}
+                },
                 "series": {"title": show_title},
                 "episode": {
                     "id": episode_id,
@@ -661,7 +668,7 @@ async def get_history(
                     "episodeNumber": episode,
                     "title": item.get("episodeTitle", "Unknown Episode")
                 },
-                "data": {"seriesId": series_id, "episodeId": episode_id}
+                "data": {"seriesId": str(series_id), "episodeId": str(episode_id)}
             })
         
         log_debug(f"Total filtered history records: {len(filtered_records)}")
