@@ -44,13 +44,17 @@ async def get_media_cover(
     # Resolve the series slug from the cache
     slug = await series_map_cache.get(f"map_{series_id}") or series_id
 
+    # Ensure slug is formatted correctly (Medusa expects 'tvdb...' or similar)
+    if str(slug).isdigit():
+        slug = f"tvdb{slug}"
+
     # Construct the URL dynamically using the configured MEDUSA_URL
-    target_url = f"/api/v2/series/{slug}/asset/{medusa_asset_type}"
+    target_url = f"/api/v2/series/{slug}/asset/{medusa_asset_type}?api_key={effective_key}"
     logger.debug(f"Proxying visual cover asset: {medusa_asset_type} for series {series_id} (slug: {slug})")
 
     try:
-        # Fetch using shared async_client, passing API key in headers
-        response = await async_client.get(target_url, headers=medusa_headers(effective_key))
+        # Fetch using shared async_client
+        response = await async_client.get(target_url)
         if response.status_code == 200:
             return StreamingResponse(
                 response.iter_bytes(), 
