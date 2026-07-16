@@ -631,6 +631,8 @@ async def get_history(
             # Extract identifiers
             series_id = extract_id_from_str(item.get("series", "0"))
             raw_episode_id = item.get("episode_id", 0)
+            show_title = item.get("showTitle", "Unknown")
+            
             # If episode_id is missing, use the unique history item id as a proxy
             episode_id = int(raw_episode_id) if raw_episode_id else int(item.get("id", i + 1))
             
@@ -639,11 +641,12 @@ async def get_history(
                 
             filtered_records.append({
                 "id": int(item.get("id", i + 1)),
-                "sourceTitle": item.get("show_name", "Unknown"),
+                "sourceTitle": show_title,
                 "eventType": map_event_type(item.get("statusName", "")),
                 "date": parse_date(item.get("actionDate", 0)),
                 "seriesId": series_id,
                 "episodeId": episode_id,
+                "series": {"title": show_title},
                 "data": {"seriesId": series_id, "episodeId": episode_id}
             })
         
