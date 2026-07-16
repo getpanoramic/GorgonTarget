@@ -296,19 +296,27 @@ async def root_index():
 async def get_system_status_v2(api_key: str = Depends(get_medusa_key)):
     return await core_system_status(api_key)
 
-# Helper to ensure all image URLs are relative paths starting with /
-def ensure_relative_paths(data: Any, request: Request) -> Any:
+# Helper to ensure all image URLs are fully qualified absolute URLs pointing to this proxy
+def apply_absolute_urls(data: Any, request: Request) -> Any:
+    # Dynamically detect the base URL from the incoming request (the proxy's host)
+    base_url = str(request.base_url).rstrip('/')
+    
     def _fix_item(item: dict):
         if "images" in item:
             for img in item["images"]:
-                # Ensure they are relative and start with /
-                if "url" in img and not img["url"].startswith("/"):
-                    img["url"] = "/" + img["url"]
-                if "remoteUrl" in img and not img["remoteUrl"].startswith("/"):
-                    img["remoteUrl"] = "/" + img["remoteUrl"]
+                # If the URL is already fully qualified, leave it.
+                # Otherwise, prepend the proxy's base URL.
+                if "url" in img and not img["url"].startswith("http"):
+                    path = img["url"].lstrip("/")
+                    img["url"] = f"{base_url}/{path}"
+                
+                if "remoteUrl" in img and not img["remoteUrl"].startswith("http"):
+                    path_rem = img["remoteUrl"].lstrip("/")
+                    img["remoteUrl"] = f"{base_url}/{path_rem}"
         
-        if "remotePoster" in item and item["remotePoster"] and not item["remotePoster"].startswith("/"):
-            item["remotePoster"] = "/" + item["remotePoster"]
+        if "remotePoster" in item and item["remotePoster"] and not item["remotePoster"].startswith("http"):
+            path_post = item["remotePoster"].lstrip("/")
+            item["remotePoster"] = f"{base_url}/{path_post}"
         return item
 
     if isinstance(data, list):
