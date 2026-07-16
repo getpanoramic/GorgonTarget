@@ -14,7 +14,7 @@ async def core_all_series(api_key: str):
     # This was a core implementation helper function, needs to be imported or refactored.
     # Moving it to utils or keeping it in main?
     # I'll keep it here for now or put in utils. Let's put in utils.
-    from ..utils import series_list_cache
+    from ..cache import series_list_cache
     cached = await series_list_cache.get("all_series")
     if cached:
         logger.debug("Returning cached translated series dataset.")
