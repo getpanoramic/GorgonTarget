@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Scope, Receive, Send
 from .utils import logger
-from .routes import series, episodes, history, system
+from .routes import series, episodes, history, system, command
 
 # ---------------------------------------------------------------------------
 # PATH NORMALIZATION MIDDLEWARE (Fixes double slashes)
@@ -46,6 +46,7 @@ app.include_router(series.router)
 app.include_router(episodes.router)
 app.include_router(history.router)
 app.include_router(system.router)
+app.include_router(command.router)
 
 @app.get("/")
 async def root_index():
