@@ -13,6 +13,8 @@ import re
 
 # ...
 
+router = APIRouter()
+
 @router.get("/api/v3/mediacover/{series_id}/{asset_file}")
 async def get_media_cover(
     series_id: str, 
@@ -62,8 +64,6 @@ async def get_media_cover(
 
     transparent_pixel = b'\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff\x21\xf9\x04\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b'
     return StreamingResponse(iter([transparent_pixel]), media_type="image/gif")
-
-router = APIRouter()
 
 
 async def core_all_series(api_key: str):
