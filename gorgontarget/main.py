@@ -439,13 +439,33 @@ async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa
 async def get_episodes(
     seriesId: Optional[int] = Query(None),
     seriesid: Optional[int] = Query(None),
+    episodeIds: Optional[List[int]] = Query(None),
     includeEpisodeFile: bool = Query(False),
     api_key: str = Depends(get_medusa_key)
 ):
+    client = MedusaClient(api_key)
+    
+    # If episode IDs are explicitly requested, we need to find them across all series
+    if episodeIds:
+        # Optimization: cache might be needed here, but for now we follow existing pattern
+        shows = await client.get_all_series()
+        all_translated_episodes = []
+        for show in shows:
+            s_id = extract_clean_integer_id(show)
+            medusa_episodes = await client.get_episodes(s_id)
+            for ep in medusa_episodes:
+                translated = MedusaTranslator.to_sonarr_episode(ep, s_id)
+                if translated.id in episodeIds:
+                    episode_dict = translated.dict()
+                    if not includeEpisodeFile:
+                        episode_dict.pop("episodeFile", None)
+                    all_translated_episodes.append(episode_dict)
+        return all_translated_episodes
+    
+    # Legacy series-based lookup
     target_id = seriesId or seriesid
     if not target_id: return []
     
-    client = MedusaClient(api_key)
     medusa_episodes = await client.get_episodes(target_id)
     
     translated_episodes = []
