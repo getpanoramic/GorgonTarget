@@ -502,8 +502,11 @@ async def get_episode_files(
     seriesid: Optional[int] = Query(None),
     api_key: str = Depends(get_medusa_key)
 ):
+    log_debug(f"get_episode_files requested with seriesId={seriesId}, seriesid={seriesid}")
     target_id = seriesId or seriesid
-    if not target_id: return []
+    if not target_id: 
+        log_debug("get_episode_files called without a valid seriesId, returning empty.")
+        return []
     
     client = MedusaClient(api_key)
     medusa_episodes = await client.get_episodes(target_id)
@@ -522,6 +525,7 @@ async def get_episode_files(
                 "size": parse_medusa_size(ep.get("size", "0 B")),
                 "dateAdded": ep.get("date", "2026-01-01T00:00:00Z")
             })
+    log_debug(f"get_episode_files returning {len(episode_files)} files for series {target_id}")
     return episode_files
 
 # ---------------------------------------------------------------------------
@@ -632,6 +636,8 @@ async def get_history(
             series_id = extract_id_from_str(item.get("series", "0"))
             raw_episode_id = item.get("episode_id", 0)
             show_title = item.get("showTitle", "Unknown")
+            season = item.get("season", 0)
+            episode = item.get("episode", 0)
             
             # If episode_id is missing, use the unique history item id as a proxy
             episode_id = int(raw_episode_id) if raw_episode_id else int(item.get("id", i + 1))
@@ -646,7 +652,15 @@ async def get_history(
                 "date": parse_date(item.get("actionDate", 0)),
                 "seriesId": series_id,
                 "episodeId": episode_id,
+                "seasonNumber": season,
+                "episodeNumber": episode,
                 "series": {"title": show_title},
+                "episode": {
+                    "id": episode_id,
+                    "seasonNumber": season,
+                    "episodeNumber": episode,
+                    "title": item.get("episodeTitle", "Unknown Episode")
+                },
                 "data": {"seriesId": series_id, "episodeId": episode_id}
             })
         
