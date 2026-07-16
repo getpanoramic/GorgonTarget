@@ -483,6 +483,7 @@ async def get_episodes(
 
 @app.get("/api/v3/episode/{episode_id}")
 async def get_single_episode(episode_id: int, includeEpisodeFile: bool = Query(False), api_key: str = Depends(get_medusa_key)):
+    log_debug(f"get_single_episode requested for ID: {episode_id}")
     client = MedusaClient(api_key)
     # Fetch all series to search for the episode
     shows = await client.get_all_series()
@@ -496,8 +497,10 @@ async def get_single_episode(episode_id: int, includeEpisodeFile: bool = Query(F
                 ep_dict = translated.dict()
                 if not includeEpisodeFile:
                     ep_dict.pop("episodeFile", None)
+                log_debug(f"get_single_episode returning: {ep_dict}")
                 return ep_dict
-                
+    
+    log_debug(f"get_single_episode: Episode {episode_id} not found.")
     raise HTTPException(status_code=404, detail="Episode not found")
 
 @app.get("/api/v3/episodefile")
