@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from typing import List, Optional
-from ..utils import get_medusa_key, logger, extract_clean_integer_id, parse_medusa_size, async_client, medusa_headers
+from ..utils import get_medusa_key, logger, extract_clean_integer_id, parse_medusa_size, async_client, medusa_headers, build_sonarr_images, extract_id_from_str
 from ..client import MedusaClient
 from ..translator import MedusaTranslator
 
@@ -141,16 +141,13 @@ async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: 
             
         data = res.json()
         logger.debug(f"DEBUG: Medusa Calendar raw data keys: {data.keys()}")
-        logger.debug(f"DEBUG: Medusa Calendar full data: {data}")
         
         # Combine all calendar categories (excluding 'missed')
         combined = data.get("today", []) + data.get("soon", []) + data.get("later", [])
         
-        from ..utils import extract_id_from_str
-        
         records = []
         for item in combined:
-            airdate_str = item.get("airdate")
+            airdate_str = item.get("localAirTime") or item.get("airdate")
             if not airdate_str:
                 continue
                 
@@ -161,20 +158,24 @@ async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: 
                 continue
                 
             series_id = int(item.get("tvdbid") or extract_id_from_str(item.get("showSlug", "0")) or 0)
+            episode_id = int(extract_id_from_str(f"{series_id}{item.get('season', 0)}{item.get('episode', 0)}") or 0)
             
             records.append({
-                "id": int(item.get("tvdbid") or extract_id_from_str(item.get("showSlug", "0")) or 0),
+                "id": episode_id,
                 "seriesId": series_id,
-                "episodeNumber": item.get("episode"),
                 "seasonNumber": item.get("season"),
+                "episodeNumber": item.get("episode"),
                 "title": item.get("epName", "Unknown Episode"),
-                "airDateUtc": item.get("localAirTime") or (airdate_str + "T00:00:00Z"),
+                "airDateUtc": airdate_str,
+                "hasFile": False,
+                "monitored": True,
                 "series": {
                     "id": series_id,
                     "title": item.get("showName", "Unknown"),
                     "status": item.get("showStatus", "continuing").lower(),
-                    "images": []
-                }
+                    "images": build_sonarr_images(series_id)
+                },
+                "images": build_sonarr_images(series_id)
             })
             
         return records
@@ -195,8 +196,6 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
         
         data = res.json()
         logger.debug(f"Wanted missing raw data received")
-        
-        from ..utils import extract_id_from_str
         
         records = []
         # The API returns a list of shows, each containing a list of episodes
