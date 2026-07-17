@@ -121,6 +121,39 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                 url = f"/home/refreshShow?showslug={slug}"
                 res = await async_client.get(url, headers=medusa_headers(api_key))
                 success = res.status_code == 200
+            elif name == "EpisodeSearch":
+                episode_ids = command.get("episodeIds", [])
+                if episode_ids:
+                    # Need to resolve episode details to get Season/Episode number for the slug
+                    # For now, simplistic approach: fetch all episodes of the show
+                    from ..client import MedusaClient
+                    client = MedusaClient(api_key)
+                    
+                    # Get all series to find the show slug
+                    series_list = await client.get_all_series()
+                    show_slug = None
+                    for s in series_list:
+                        if str(s.get("id")) == str(series_id):
+                            show_slug = s.get("slug")
+                            break
+                    
+                    if show_slug:
+                        # Find episode details (need to translate ep_id to SXXEXX format)
+                        # This is a bit complex for a quick fix. 
+                        # Assuming the client sends episodeIds that we can look up.
+                        episodes = await client.get_episodes(series_id)
+                        ep_format = []
+                        for ep in episodes:
+                            translated_id = int(extract_id_from_str(f"{series_id}{ep.get('season', 0)}{ep.get('episode', 0)}") or 0)
+                            if translated_id in episode_ids:
+                                ep_format.append(f"S{ep.get('season'):02d}E{ep.get('episode'):02d}")
+                        
+                        if ep_format:
+                            payload = {"showSlug": show_slug, "episodes": ep_format, "options": {}}
+                            res = await async_client.put("/api/v2/search/backlog", json=payload, headers=medusa_headers(api_key))
+                            success = res.status_code == 200
+                            logger.debug(f"Backlog search request sent: {payload}, success: {success}, code: {res.status_code}")
+                            
         elif name == "CheckForUpdates":
             res = await async_client.post("/api/v2/system/operation", json={"command": "check_update"}, headers=medusa_headers(api_key))
             success = res.status_code == 200
