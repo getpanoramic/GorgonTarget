@@ -164,24 +164,34 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                     series_id = None
                     show_slug = None
                     for s in series_list:
-                        s_id = s.get("id", {}).get("tvdb") or s.get("id", {}).get("tvmaze")
-                        if not s_id: continue
+                        # Correctly extract ID from either 'externals' (tvdb) or 'id' (tvmaze)
+                        # Based on logs, 'externals' holds 'tvdb', 'id' holds 'tvmaze'
+                        id_map = s.get("id", {})
+                        ext_map = s.get("externals", {})
                         
-                        episodes = await client.get_episodes(s_id)
-                        if episodes:
-                            logger.debug(f"DEBUG: Sample episode structure for {s.get('title')}: {episodes[0]}")
+                        s_id = ext_map.get("tvdb") or id_map.get("tvmaze") or id_map.get("trakt")
+                        current_slug = id_map.get("slug")
                         
-                        for ep in episodes:
-                            # Use Medusa's internal episode ID if available for matching
-                            # Or regenerate based on what we have
-                            ep_id = int(ep.get("id") or 0)
+                        logger.debug(f"DEBUG: Checking series: {s.get('title')}, candidate s_id: {s_id}, slug: {current_slug}")
+                        
+                        if not s_id:
+                            # Fallback if s_id is still missing
+                            s_id = extract_clean_integer_id(s)
+                            if not s_id: continue
                             
-                            # DEBUG: log what we are checking
-                            # logger.debug(f"DEBUG: Checking ep_id: {ep_id} against {episode_ids}")
+                        # Try to resolve episodes for this series
+                        try:
+                            episodes = await client.get_episodes(s_id)
+                        except Exception as e:
+                            logger.debug(f"DEBUG: Failed to get episodes for {s_id}: {e}")
+                            continue
+
+                        for ep in episodes:
+                            ep_id = int(ep.get("id") or 0)
                             
                             if ep_id in episode_ids:
                                 series_id = s_id
-                                show_slug = s.get("id", {}).get("slug")
+                                show_slug = current_slug
                                 logger.debug(f"DEBUG: Found match! series_id: {series_id}, show_slug: {show_slug}")
                                 break
                         if series_id:
