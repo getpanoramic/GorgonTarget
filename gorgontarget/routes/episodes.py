@@ -185,42 +185,41 @@ async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: 
 @router.get("/api/v3/wanted/missing")
 async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
     try:
-        # Request 'missed' category from Medusa's schedule
-        params = [
-            ("category[]", "missed"),
-            ("paused", "true")
-        ]
-        res = await async_client.get("/api/v2/schedule", params=params, headers=medusa_headers(api_key))
+        # Request from correct endpoint
+        params = {"period": "all", "status": "all"}
+        res = await async_client.get("/api/v2/internal/getEpisodeBacklog", params=params, headers=medusa_headers(api_key))
+        
         if res.status_code != 200: 
             logger.debug(f"Wanted missing fetch failed: {res.status_code}")
             return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
         
         data = res.json()
-        logger.debug(f"Wanted missing raw data: {data}")
-        
-        # Extract missed shows
-        missed = data.get("missed", [])
+        logger.debug(f"Wanted missing raw data received")
         
         from ..utils import extract_id_from_str
         
         records = []
-        for idx, item in enumerate(missed):
-            series_id = int(item.get("tvdbid") or extract_id_from_str(item.get("showSlug", "0")) or 0)
-            records.append({
-                "id": int(item.get("tvdbid") or extract_id_from_str(item.get("showSlug", "0")) or idx + 1000),
-                "seriesId": series_id,
-                "episodeNumber": item.get("episode"),
-                "seasonNumber": item.get("season"),
-                "title": item.get("epName", "Unknown Episode"),
-                "airDateUtc": item.get("localAirTime") or (item.get("airdate", "2026-01-01") + "T00:00:00Z"),
-                "series": {
-                    "id": series_id,
-                    "title": item.get("showName", "Unknown"),
-                    "status": item.get("showStatus", "continuing").lower(),
-                    "images": []
-                },
-                "monitored": True
-            })
+        # The API returns a list of shows, each containing a list of episodes
+        for show in data:
+            series_id = int(extract_id_from_str(show.get("slug", "0")) or 0)
+            show_name = show.get("name", "Unknown Show")
+            
+            for ep in show.get("episodes", []):
+                records.append({
+                    "id": int(extract_id_from_str(f"{series_id}{ep.get('season', 0)}{ep.get('episode', 0)}") or 0),
+                    "seriesId": series_id,
+                    "episodeNumber": ep.get("episode"),
+                    "seasonNumber": ep.get("season"),
+                    "title": ep.get("name", "Unknown Episode"),
+                    "airDateUtc": ep.get("airdate", "2026-01-01T00:00:00Z"),
+                    "series": {
+                        "id": series_id,
+                        "title": show_name,
+                        "status": "continuing",
+                        "images": []
+                    },
+                    "monitored": True
+                })
         
         return {"page": 1, "pageSize": len(records) or 20, "totalRecords": len(records), "records": records}
     except Exception as e:
