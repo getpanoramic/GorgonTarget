@@ -141,8 +141,19 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
         
         logger.debug(f"DEBUG: Pre-execution slug: {slug}, name: {name}")
         
+        # Dispatch logic
         success = False
-        if slug:
+        
+        # Commands that don't need a slug
+        if name == "RefreshMonitoredDownloads":
+            logger.debug("DEBUG: RefreshMonitoredDownloads triggered")
+            success = True
+        elif name == "CheckForUpdates":
+            res = await async_client.post("/api/v2/system/operation", json={"command": "check_update"}, headers=medusa_headers(api_key))
+            success = res.status_code == 200
+        
+        # Commands that need a slug
+        elif slug:
             if name == "RefreshSeries":
                 url = f"/home/updateShow?showslug={slug}"
                 res = await async_client.get(url, headers=medusa_headers(api_key))
@@ -205,10 +216,6 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                             
         else:
             logger.debug(f"DEBUG: Search skipped because slug was: {slug}")
-                            
-        if name == "CheckForUpdates" and not success:
-            res = await async_client.post("/api/v2/system/operation", json={"command": "check_update"}, headers=medusa_headers(api_key))
-            success = res.status_code == 200
         
         if success:
             COMMAND_REGISTRY[command_id]["status"] = "completed"
