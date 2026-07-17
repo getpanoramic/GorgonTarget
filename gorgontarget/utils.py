@@ -14,6 +14,9 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stderr)]
 )
 logger = logging.getLogger("GorgonTarget")
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # Shared HTTP client for proxying
 async_client = httpx.AsyncClient(base_url=settings.medusa_url, timeout=settings.timeout)
