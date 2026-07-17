@@ -157,53 +157,30 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                 logger.debug(f"DEBUG: EpisodeSearch triggered for IDs: {episode_ids}, series_id: {series_id}")
                 if episode_ids:
                     from ..client import MedusaClient
+                    from ..cache import series_map_cache
                     client = MedusaClient(api_key)
                     
-                    # Get all series to find the show slug
-                    series_list = await client.get_all_series()
                     series_id = None
                     show_slug = None
+                    series_list = await client.get_all_series()
+                    
                     for s in series_list:
-                        # Correctly extract ID from either 'externals' (tvdb) or 'id' (tvmaze)
-                        # Based on logs, 'externals' holds 'tvdb', 'id' holds 'tvmaze'
-                        id_map = s.get("id", {})
-                        ext_map = s.get("externals", {})
-                        
-                        s_id = ext_map.get("tvdb") or id_map.get("tvmaze") or id_map.get("trakt")
-                        current_slug = id_map.get("slug")
-                        
-                        logger.debug(f"DEBUG: Checking series: {s.get('title')}, candidate s_id: {s_id}, slug: {current_slug}")
-                        
-                        if not s_id:
-                            # Fallback if s_id is still missing
-                            s_id = extract_clean_integer_id(s)
-                            if not s_id: continue
-                            
-                        # Try to resolve episodes for this series
-                        try:
-                            episodes = await client.get_episodes(s_id)
-                        except Exception as e:
-                            logger.debug(f"DEBUG: Failed to get episodes for {s_id}: {e}")
-                            continue
-
+                        s_id = extract_clean_integer_id(s)
+                        episodes = await client.get_episodes(s_id)
                         for ep in episodes:
-                            ep_id = int(ep.get("id") or 0)
-                            
-                            if ep_id in episode_ids:
+                            if int(ep.get("id") or 0) in episode_ids:
                                 series_id = s_id
-                                show_slug = current_slug
-                                logger.debug(f"DEBUG: Found match! series_id: {series_id}, show_slug: {show_slug}")
                                 break
                         if series_id:
                             break
-                    
-                    if show_slug:
+                            
+                    if series_id:
+                        slug = await series_map_cache.get(f"map_{series_id}") or str(series_id)
+                        show_slug = str(slug)
+                        logger.debug(f"DEBUG: Found match! series_id: {series_id}, show_slug: {show_slug}")
+                        
                         episodes = await client.get_episodes(series_id)
-                        ep_format = []
-                        for ep in episodes:
-                            translated_id = int(extract_id_from_str(f"{series_id}{ep.get('season', 0)}{ep.get('episode', 0)}") or 0)
-                            if translated_id in episode_ids:
-                                ep_format.append(f"S{ep.get('season'):02d}E{ep.get('episode'):02d}")
+                        ep_format = [f"S{ep.get('season'):02d}E{ep.get('episode'):02d}" for ep in episodes if int(ep.get("id") or 0) in episode_ids]
                         
                         logger.debug(f"DEBUG: Episodes to search (format SXXEXX): {ep_format}")
                         
