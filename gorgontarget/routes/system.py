@@ -151,6 +151,13 @@ async def get_log_file(api_key: str = Depends(get_medusa_key)):
     log_content = await client.get_raw_logs()
     return log_content
 
+@router.get("/api/v3/qualityprofile")
+async def get_quality_profiles(api_key: str = Depends(get_medusa_key)):
+    return [
+        {"id": 1, "name": "Medusa Managed Profile", "upgradeAllowed": False, "cutoff": 1, "items": []},
+        {"id": 2, "name": "HD - 720p/1080p", "upgradeAllowed": False, "cutoff": 2, "items": []}
+    ]
+
 @router.get("/api/v3/system/backup")
 async def get_backups(api_key: str = Depends(get_medusa_key)):
     res = await async_client.get("/api/v2/config/backup", headers=medusa_headers(api_key))
