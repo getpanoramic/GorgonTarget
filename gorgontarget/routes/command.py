@@ -159,28 +159,18 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                     from ..client import MedusaClient
                     from ..cache import series_map_cache
                     client = MedusaClient(api_key)
-                    
+
                     series_list = await client.get_all_series()
                     series_id = None
                     show_slug = None
                     for s in series_list:
-                        id_map = s.get("id", {})
-                        ext_map = s.get("externals", {})
-                        
-                        # Find ANY integer value that might be an ID
-                        s_id = None
-                        all_vals = list(id_map.values()) + list(ext_map.values())
-                        for val in all_vals:
-                            if isinstance(val, int):
-                                s_id = val
-                                break
-                        
-                        current_slug = id_map.get("slug")
+                        # Inspect structure: {'id': {'tvmaze': ..., 'slug': ...}, 'externals': {'tvdb': ...}, ...}
+                        s_id = s.get("externals", {}).get("tvdb") or s.get("id", {}).get("tvmaze")
+                        current_slug = s.get("id", {}).get("slug")
                         logger.debug(f"DEBUG: Checking series: {s.get('title')}, candidate s_id: {s_id}, slug: {current_slug}")
-                        
-                        if not s_id:
-                            continue
-                            
+
+                        if not s_id: continue
+
                         # Try to resolve episodes for this series
                         try:
                             episodes = await client.get_episodes(s_id)
@@ -196,16 +186,16 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                                 break
                         if series_id:
                             break
-                            
+
                     if series_id:
                         # Log if we successfully resolved series_id
                         logger.debug(f"DEBUG: Found match! series_id: {series_id}, show_slug: {show_slug}")
-                        
+
                         episodes = await client.get_episodes(series_id)
                         ep_format = [f"S{ep.get('season'):02d}E{ep.get('episode'):02d}" for ep in episodes if int(ep.get("id") or 0) in episode_ids]
-                        
+
                         logger.debug(f"DEBUG: Episodes to search (format SXXEXX): {ep_format}")
-                        
+
                         if ep_format:
                             payload = {"showSlug": show_slug, "episodes": ep_format, "options": {}}
                             logger.debug(f"DEBUG: Sending backlog search payload: {payload}")
