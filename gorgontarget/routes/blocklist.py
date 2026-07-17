@@ -26,12 +26,30 @@ async def get_blocklist(
         
         records = []
         for item in data:
+            # Map Medusa quality (if available in release string) to Sonarr schema
+            release = item.get("release", "")
+            quality_name = "Unknown"
+            if "1080p" in release: quality_name = "1080p"
+            elif "720p" in release: quality_name = "720p"
+            elif "480p" in release: quality_name = "480p"
+            elif "2160p" in release: quality_name = "2160p"
+            
+            # Sonarr quality mapping
+            quality_map = {
+                "2160p": {"id": 1, "name": "2160p", "source": "web", "resolution": 2160},
+                "1080p": {"id": 2, "name": "1080p", "source": "web", "resolution": 1080},
+                "720p": {"id": 3, "name": "720p", "source": "web", "resolution": 720},
+                "480p": {"id": 4, "name": "480p", "source": "web", "resolution": 480},
+                "Unknown": {"id": 0, "name": "Unknown", "source": "unknown", "resolution": 0}
+            }
+            mapped_quality = quality_map.get(quality_name, quality_map["Unknown"])
+
             # Map Medusa failed item to Sonarr blocklist item
             records.append({
                 "id": item.get("id"),
-                "sourceTitle": item.get("release"),
+                "sourceTitle": release,
                 "quality": {
-                    "quality": {"id": 0, "name": "Unknown", "source": "unknown", "resolution": 0},
+                    "quality": mapped_quality,
                     "revision": {"version": 1, "real": 0, "isRepack": False}
                 },
                 "languages": [{"id": 1, "name": "English"}],
