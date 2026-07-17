@@ -186,38 +186,96 @@ async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: 
 @router.get("/api/v3/wanted/missing")
 async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
     try:
-        # Request from correct endpoint
         params = {"period": "all", "status": "all"}
         res = await async_client.get("/api/v2/internal/getEpisodeBacklog", params=params, headers=medusa_headers(api_key))
         
         if res.status_code != 200: 
-            logger.debug(f"Wanted missing fetch failed: {res.status_code}")
             return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
         
         data = res.json()
-        logger.debug(f"DEBUG: Wanted missing raw data received: {data}")
         
         records = []
-        # The API returns a list of shows, each containing a list of episodes
         for show in data:
             series_id = int(extract_id_from_str(show.get("slug", "0")) or 0)
+            show_name = show.get("name", "Unknown Show")
             
             for ep in show.get("episodes", []):
+                # Map to Sonarr schema
                 records.append({
                     "id": int(extract_id_from_str(f"{series_id}{ep.get('season', 0)}{ep.get('episode', 0)}") or 0),
                     "seriesId": series_id,
-                    "episodeNumber": ep.get("episode"),
+                    "tvdbId": series_id,
                     "seasonNumber": ep.get("season"),
+                    "episodeNumber": ep.get("episode"),
                     "title": ep.get("name", "Unknown Episode"),
                     "airDateUtc": ep.get("airdate", "2026-01-01T00:00:00Z"),
-                    "monitored": True
+                    "hasFile": False,
+                    "monitored": True,
+                    "series": {
+                        "id": series_id,
+                        "title": show_name,
+                        "status": "continuing",
+                        "images": build_sonarr_images(series_id, api_key=api_key)
+                    },
+                    "images": build_sonarr_images(series_id, api_key=api_key)
                 })
         
-        logger.debug(f"DEBUG: Constructed records: {records}")
-        return records
+        return {
+            "page": 1, 
+            "pageSize": len(records) or 20, 
+            "totalRecords": len(records), 
+            "records": records
+        }
     except Exception as e:
         logger.error(f"Wanted missing exception: {str(e)}")
         return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
+
+@router.get("/api/v3/wanted/missing/{id}")
+async def get_wanted_missing_by_id(id: int, api_key: str = Depends(get_medusa_key)):
+    try:
+        params = {"period": "all", "status": "all"}
+        res = await async_client.get("/api/v2/internal/getEpisodeBacklog", params=params, headers=medusa_headers(api_key))
+        
+        if res.status_code != 200: 
+            raise HTTPException(status_code=404, detail="Not found")
+        
+        data = res.json()
+        
+        for show in data:
+            series_id = int(extract_id_from_str(show.get("slug", "0")) or 0)
+            show_name = show.get("name", "Unknown Show")
+            
+            for ep in show.get("episodes", []):
+                ep_id = int(extract_id_from_str(f"{series_id}{ep.get('season', 0)}{ep.get('episode', 0)}") or 0)
+                if ep_id == id:
+                    return {
+                        "id": ep_id,
+                        "seriesId": series_id,
+                        "tvdbId": series_id,
+                        "episodeFileId": 0,
+                        "seasonNumber": ep.get("season"),
+                        "episodeNumber": ep.get("episode"),
+                        "title": ep.get("name", "Unknown Episode"),
+                        "airDate": ep.get("airdate", "2026-01-01T00:00:00Z"),
+                        "airDateUtc": ep.get("airdate", "2026-01-01T00:00:00Z"),
+                        "runtime": 30,
+                        "hasFile": False,
+                        "monitored": True,
+                        "series": {
+                            "id": series_id,
+                            "title": show_name,
+                            "status": "continuing",
+                            "images": build_sonarr_images(series_id, api_key=api_key)
+                        },
+                        "images": build_sonarr_images(series_id, api_key=api_key)
+                    }
+        
+        raise HTTPException(status_code=404, detail="Episode not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Wanted missing by ID exception: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/api/v3/queue")
 async def get_queue(page: int = 1, pageSize: int = 20, api_key: str = Depends(get_medusa_key)):
