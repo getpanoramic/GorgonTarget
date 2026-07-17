@@ -29,7 +29,9 @@ async def get_medusa_key(
     api_key: Optional[str] = Query(None)
 ) -> str:
     resolved_key = x_api_key or apikey or api_key
+    logger.debug(f"DEBUG: get_medusa_key resolved_key: {resolved_key}")
     if not resolved_key:
+        logger.debug("DEBUG: get_medusa_key missing key")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
             detail="Missing API Key context."
