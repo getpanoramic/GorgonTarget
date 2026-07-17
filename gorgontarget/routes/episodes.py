@@ -202,7 +202,7 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
             for ep in show.get("episodes", []):
                 ep_id = int(extract_id_from_str(f"{series_id}{ep.get('season', 0)}{ep.get('episode', 0)}") or 0)
                 
-                # Strict NZB360 schema mapping
+                # Strict NZB360 schema mapping with complete nested structures
                 record = {
                     "id": ep_id,
                     "seriesId": series_id,
@@ -215,7 +215,35 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
                     "airDateUtc": ep.get("airdate"),
                     "hasFile": False,
                     "monitored": True,
-                    "episodeFile": None,
+                    "episodeFile": {
+                        "id": 0,
+                        "seriesId": series_id,
+                        "seasonNumber": ep.get("season"),
+                        "relativePath": None,
+                        "path": None,
+                        "size": 0,
+                        "dateAdded": "2026-07-17T00:00:00Z",
+                        "quality": {
+                            "quality": {"id": 1, "name": "Unknown", "source": "unknown", "resolution": 0},
+                            "revision": {"version": 1, "real": 0, "isRepack": False}
+                        },
+                        "customFormats": [],
+                        "customFormatScore": 0,
+                        "indexerFlags": None,
+                        "releaseType": "unknown",
+                        "mediaInfo": {
+                            "id": 0,
+                            "audioBitrate": 0,
+                            "audioChannels": 0,
+                            "audioCodec": None,
+                            "videoBitDepth": 0,
+                            "videoBitrate": 0,
+                            "videoCodec": None,
+                            "videoFps": 0,
+                            "resolution": None
+                        },
+                        "qualityCutoffNotMet": True
+                    },
                     "series": {
                         "id": series_id,
                         "title": show_name,
