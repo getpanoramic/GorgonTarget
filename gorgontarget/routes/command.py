@@ -56,6 +56,28 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
     if "body" in command and isinstance(command["body"], dict):
         series_id = command["body"].get("seriesId") or command["body"].get("id")
     
+    # If series_id is missing, try to resolve it from episodeIds if available
+    episode_ids = command.get("episodeIds") or (command["body"].get("episodeIds") if "body" in command and isinstance(command["body"], dict) else [])
+    
+    if not series_id and episode_ids:
+        # Simplistic resolution: iterate over all series episodes to find the series ID
+        # This is expensive but necessary if the client doesn't provide seriesId.
+        from ..client import MedusaClient
+        client = MedusaClient(api_key)
+        series_list = await client.get_all_series()
+        for s in series_list:
+            s_id = extract_clean_integer_id(s)
+            episodes = await client.get_episodes(s_id)
+            for ep in episodes:
+                # Need to match the same ID generation used in episodes.py
+                ep_id = int(extract_id_from_str(f"{s_id}{ep.get('season', 0)}{ep.get('episode', 0)}") or 0)
+                if ep_id in episode_ids:
+                    series_id = s_id
+                    break
+            if series_id:
+                break
+        logger.debug(f"DEBUG: Resolved series_id from episodeIds: {series_id}")
+    
     logger.debug(f"DEBUG: Extracted name: {name}, series_id: {series_id}")
         
     if not name:
