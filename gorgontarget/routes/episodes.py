@@ -229,12 +229,14 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
                 }
                 records.append(record)
         
-        return {
+        response = {
             "page": 1, 
             "pageSize": len(records) or 20, 
             "totalRecords": len(records), 
             "records": records
         }
+        logger.debug(f"DEBUG: Forensic response structure: {response}")
+        return response
     except Exception as e:
         logger.error(f"Wanted missing exception: {str(e)}")
         return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}

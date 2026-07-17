@@ -61,7 +61,6 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
     
     if not series_id and episode_ids:
         # Simplistic resolution: iterate over all series episodes to find the series ID
-        # This is expensive but necessary if the client doesn't provide seriesId.
         from ..client import MedusaClient
         client = MedusaClient(api_key)
         series_list = await client.get_all_series()
@@ -131,12 +130,12 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
     # Dispatch to Medusa in the background without blocking the UI
     try:
         from ..client import MedusaClient
+        from ..cache import series_map_cache
         client = MedusaClient(api_key)
         
         # Resolve slug for command
         slug = None
         if series_id:
-            from ..cache import series_map_cache
             slug = await series_map_cache.get(f"map_{series_id}") or str(series_id)
         
         logger.debug(f"DEBUG: Pre-execution slug: {slug}, name: {name}")
@@ -152,8 +151,8 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
             res = await async_client.post("/api/v2/system/operation", json={"command": "check_update"}, headers=medusa_headers(api_key))
             success = res.status_code == 200
         
-        # Commands that need a slug
-        elif slug:
+        # Commands that need a slug or series context
+        elif slug or name == "EpisodeSearch":
             if name == "RefreshSeries":
                 url = f"/home/updateShow?showslug={slug}"
                 res = await async_client.get(url, headers=medusa_headers(api_key))
@@ -166,53 +165,33 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                 logger.debug("DEBUG: Entering EpisodeSearch block")
                 episode_ids = command.get("episodeIds", [])
                 logger.debug(f"DEBUG: EpisodeSearch triggered for IDs: {episode_ids}, series_id: {series_id}")
-                if episode_ids:
-                    from ..client import MedusaClient
-                    from ..cache import series_map_cache
-                    client = MedusaClient(api_key)
-
+                
+                # If we don't have a series_id, resolve it
+                if not series_id and episode_ids:
                     series_list = await client.get_all_series()
-                    series_id = None
-                    show_slug = None
                     for s in series_list:
-                        # Inspect structure: {'id': {'tvmaze': ..., 'slug': ...}, 'externals': {'tvdb': ...}, ...}
                         s_id = s.get("externals", {}).get("tvdb") or s.get("id", {}).get("tvmaze")
-                        current_slug = s.get("id", {}).get("slug")
-                        logger.debug(f"DEBUG: Checking series: {s.get('title')}, candidate s_id: {s_id}, slug: {current_slug}")
-
                         if not s_id: continue
-
-                        # Try to resolve episodes for this series
-                        try:
-                            episodes = await client.get_episodes(s_id)
-                        except Exception as e:
-                            logger.debug(f"DEBUG: Failed to get episodes for {s_id}: {e}")
-                            continue
-
+                        episodes = await client.get_episodes(s_id)
                         for ep in episodes:
                             if int(ep.get("id") or 0) in episode_ids:
                                 series_id = s_id
-                                show_slug = current_slug or str(s_id)
-                                logger.debug(f"DEBUG: Found match! series_id: {series_id}, show_slug: {show_slug}")
                                 break
-                        if series_id:
-                            break
+                        if series_id: break
 
-                    if series_id:
-                        # Log if we successfully resolved series_id
-                        logger.debug(f"DEBUG: Found match! series_id: {series_id}, show_slug: {show_slug}")
-
-                        episodes = await client.get_episodes(series_id)
-                        ep_format = [f"S{ep.get('season'):02d}E{ep.get('episode'):02d}" for ep in episodes if int(ep.get("id") or 0) in episode_ids]
-
-                        logger.debug(f"DEBUG: Episodes to search (format SXXEXX): {ep_format}")
-
-                        if ep_format:
-                            payload = {"showSlug": show_slug, "episodes": ep_format, "options": {}}
-                            logger.debug(f"DEBUG: Sending backlog search payload: {payload}")
-                            res = await async_client.put("/api/v2/search/backlog", json=payload, headers=medusa_headers(api_key))
-                            success = res.status_code == 200
-                            logger.debug(f"DEBUG: Backlog search request result code: {res.status_code}")
+                if series_id:
+                    slug = await series_map_cache.get(f"map_{series_id}") or str(series_id)
+                    episodes = await client.get_episodes(series_id)
+                    ep_format = [f"S{ep.get('season'):02d}E{ep.get('episode'):02d}" for ep in episodes if int(ep.get("id") or 0) in episode_ids]
+                    
+                    logger.debug(f"DEBUG: Episodes to search (format SXXEXX): {ep_format}")
+                    
+                    if ep_format:
+                        payload = {"showSlug": slug, "episodes": ep_format, "options": {}}
+                        logger.debug(f"DEBUG: Sending backlog search payload: {payload}")
+                        res = await async_client.put("/api/v2/search/backlog", json=payload, headers=medusa_headers(api_key))
+                        success = res.status_code == 200
+                        logger.debug(f"DEBUG: Backlog search request result code: {res.status_code}")
                             
         else:
             logger.debug(f"DEBUG: Search skipped because slug was: {slug}")
