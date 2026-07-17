@@ -66,11 +66,15 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
         client = MedusaClient(api_key)
         series_list = await client.get_all_series()
         for s in series_list:
+            # DEBUG: Inspect the series object structure
+            logger.debug(f"DEBUG: Checking series object: {s}")
             s_id = extract_clean_integer_id(s)
+            logger.debug(f"DEBUG: Extracted s_id: {s_id}")
             episodes = await client.get_episodes(s_id)
             for ep in episodes:
                 # Need to match the same ID generation used in episodes.py
                 ep_id = int(extract_id_from_str(f"{s_id}{ep.get('season', 0)}{ep.get('episode', 0)}") or 0)
+                logger.debug(f"DEBUG: Checking ep_id: {ep_id} against input: {episode_ids}")
                 if ep_id in episode_ids:
                     series_id = s_id
                     break
