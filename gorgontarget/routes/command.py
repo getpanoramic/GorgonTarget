@@ -51,14 +51,16 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
     if not name and "body" in command and isinstance(command["body"], dict):
         name = command["body"].get("name")
         
-    if not name:
-        logger.error("Could not find command name in the payload.")
-        raise HTTPException(status_code=400, detail="Command name is required.")
-
     # Try to extract seriesId from body
     series_id = None
     if "body" in command and isinstance(command["body"], dict):
         series_id = command["body"].get("seriesId") or command["body"].get("id")
+    
+    logger.debug(f"DEBUG: Extracted name: {name}, series_id: {series_id}")
+        
+    if not name:
+        logger.error("Could not find command name in the payload.")
+        raise HTTPException(status_code=400, detail="Command name is required.")
 
     # Generate a unique integer ID
     command_id = abs(hash(f"{name}-{series_id}-{time.time()}")) % 10000
@@ -111,6 +113,8 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
             from ..cache import series_map_cache
             slug = await series_map_cache.get(f"map_{series_id}") or str(series_id)
         
+        logger.debug(f"DEBUG: Pre-execution slug: {slug}, name: {name}")
+        
         success = False
         if slug:
             if name == "RefreshSeries":
@@ -122,6 +126,7 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                 res = await async_client.get(url, headers=medusa_headers(api_key))
                 success = res.status_code == 200
             elif name == "EpisodeSearch":
+                logger.debug("DEBUG: Entering EpisodeSearch block")
                 episode_ids = command.get("episodeIds", [])
                 logger.debug(f"DEBUG: EpisodeSearch triggered for IDs: {episode_ids}, series_id: {series_id}")
                 if episode_ids:
@@ -155,7 +160,10 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                             success = res.status_code == 200
                             logger.debug(f"DEBUG: Backlog search request result code: {res.status_code}")
                             
-        elif name == "CheckForUpdates":
+        else:
+            logger.debug(f"DEBUG: Search skipped because slug was: {slug}")
+                            
+        if name == "CheckForUpdates" and not success:
             res = await async_client.post("/api/v2/system/operation", json={"command": "check_update"}, headers=medusa_headers(api_key))
             success = res.status_code == 200
         
