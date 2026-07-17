@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import Optional
 from ..utils import async_client, get_medusa_key, medusa_headers, logger
 
@@ -68,3 +68,19 @@ async def get_blocklist(
     except Exception as e:
         logger.error(f"Blocklist exception: {str(e)}")
         return {"page": 1, "pageSize": pageSize, "totalRecords": 0, "records": []}
+
+@router.delete("/api/v3/blocklist/{id}")
+async def delete_blocklist_item(id: int, api_key: str = Depends(get_medusa_key)):
+    try:
+        # Medusa's removeFailed endpoint expects a payload with a 'remove' list of IDs
+        payload = {"remove": [id]}
+        res = await async_client.post("/api/v2/internal/removeFailed", json=payload, headers=medusa_headers(api_key))
+        
+        if res.status_code == 200:
+            return {"status": "success"}
+        else:
+            logger.debug(f"Failed to remove blocklist item {id}: {res.status_code}")
+            raise HTTPException(status_code=500, detail="Failed to remove item")
+    except Exception as e:
+        logger.error(f"Blocklist deletion exception: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
