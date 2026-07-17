@@ -43,10 +43,19 @@ async def get_media_cover(
 
     # Resolve the series slug from the cache
     slug = await series_map_cache.get(f"map_{series_id}") or series_id
+    
+    # Ensure slug is a string
+    slug = str(slug)
 
     # Ensure slug is formatted correctly (Medusa expects 'tvdb...' or similar)
-    if str(slug).isdigit():
+    # Only add 'tvdb' if it's purely numeric
+    if slug.isdigit():
         slug = f"tvdb{slug}"
+    # If it already has a known prefix (e.g., tvmaze, imdb), leave it
+    elif not any(slug.startswith(prefix) for prefix in ["tvdb", "tvmaze", "imdb", "tmdb"]):
+         # Fallback if it's not a digit but lacks a prefix
+         slug = f"tvdb{slug}"
+
 
     # Construct the URL dynamically using the configured MEDUSA_URL
     target_url = f"/api/v2/series/{slug}/asset/{medusa_asset_type}?api_key={effective_key}"
