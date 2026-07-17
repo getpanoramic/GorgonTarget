@@ -195,15 +195,17 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
             return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
         
         data = res.json()
-        logger.debug(f"Wanted missing raw data received")
+        logger.debug(f"DEBUG: Wanted missing raw data received: {data}")
         
         records = []
         # The API returns a list of shows, each containing a list of episodes
         for show in data:
+            logger.debug(f"DEBUG: Processing show: {show.get('name')}")
             series_id = int(extract_id_from_str(show.get("slug", "0")) or 0)
             show_name = show.get("name", "Unknown Show")
             
             for ep in show.get("episodes", []):
+                logger.debug(f"DEBUG: Processing episode: {ep.get('name')}")
                 records.append({
                     "id": int(extract_id_from_str(f"{series_id}{ep.get('season', 0)}{ep.get('episode', 0)}") or 0),
                     "seriesId": series_id,
@@ -220,6 +222,7 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
                     "monitored": True
                 })
         
+        logger.debug(f"DEBUG: Constructed records: {records}")
         return {"page": 1, "pageSize": len(records) or 20, "totalRecords": len(records), "records": records}
     except Exception as e:
         logger.error(f"Wanted missing exception: {str(e)}")
