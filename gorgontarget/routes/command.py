@@ -161,13 +161,31 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                     
                     # Get all series to find the show slug
                     series_list = await client.get_all_series()
+                    series_id = None
                     show_slug = None
                     for s in series_list:
-                        if str(s.get("id")) == str(series_id):
-                            show_slug = s.get("slug")
+                        s_id = s.get("id", {}).get("tvdb") or s.get("id", {}).get("tvmaze")
+                        if not s_id: continue
+                        
+                        episodes = await client.get_episodes(s_id)
+                        if episodes:
+                            logger.debug(f"DEBUG: Sample episode structure for {s.get('title')}: {episodes[0]}")
+                        
+                        for ep in episodes:
+                            # Use Medusa's internal episode ID if available for matching
+                            # Or regenerate based on what we have
+                            ep_id = int(ep.get("id") or 0)
+                            
+                            # DEBUG: log what we are checking
+                            # logger.debug(f"DEBUG: Checking ep_id: {ep_id} against {episode_ids}")
+                            
+                            if ep_id in episode_ids:
+                                series_id = s_id
+                                show_slug = s.get("id", {}).get("slug")
+                                logger.debug(f"DEBUG: Found match! series_id: {series_id}, show_slug: {show_slug}")
+                                break
+                        if series_id:
                             break
-                    
-                    logger.debug(f"DEBUG: Resolved show_slug: {show_slug}")
                     
                     if show_slug:
                         episodes = await client.get_episodes(series_id)
