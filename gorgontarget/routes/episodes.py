@@ -140,7 +140,8 @@ async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: 
             return []
             
         data = res.json()
-        logger.debug(f"Calendar schedule raw data: {data}")
+        logger.debug(f"DEBUG: Medusa Calendar raw data keys: {data.keys()}")
+        logger.debug(f"DEBUG: Medusa Calendar full data: {data}")
         
         # Combine all calendar categories (excluding 'missed')
         combined = data.get("today", []) + data.get("soon", []) + data.get("later", [])
