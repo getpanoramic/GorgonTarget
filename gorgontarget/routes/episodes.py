@@ -220,6 +220,7 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
                     "images": build_sonarr_images(series_id, api_key=api_key)
                 })
         
+        logger.debug(f"DEBUG: Returning {len(records)} records for Wanted/Missing. First record: {records[0] if records else 'None'}")
         return {
             "page": 1, 
             "pageSize": len(records) or 20, 
