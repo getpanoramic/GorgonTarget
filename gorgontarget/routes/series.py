@@ -15,7 +15,7 @@ import re
 
 router = APIRouter()
 
-@router.get("/api/v3/mediacover/{series_id}/{asset_file}")
+@router.get("/mediacover/{series_id}/{asset_file}")
 async def get_media_cover(
     series_id: str, 
     asset_file: str, 

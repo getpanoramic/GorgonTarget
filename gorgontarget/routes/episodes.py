@@ -128,46 +128,102 @@ async def get_episode_files(
 @router.get("/api/v3/calendar")
 async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: str = Depends(get_medusa_key)):
     try:
-        res = await async_client.get("/api/v2/schedule", headers=medusa_headers(api_key))
-        if res.status_code != 200: return []
-        return [{
-            "id": int(item.get("id", 0)),
-            "seriesId": int(item.get("seriesId", 0)),
-            "episodeNumber": item.get("episode"),
-            "seasonNumber": item.get("season"),
-            "title": item.get("title"),
-            "airDateUtc": item.get("airDate"),
-            "series": {"title": item.get("show_name", "Unknown")}
-        } for item in res.json().get("coming", [])]
-    except Exception:
+        # Request all relevant categories from Medusa's schedule
+        params = [
+            ("category[]", "today"),
+            ("category[]", "soon"),
+            ("category[]", "later"),
+            ("paused", "true")
+        ]
+        res = await async_client.get("/api/v2/schedule", params=params, headers=medusa_headers(api_key))
+        if res.status_code != 200: 
+            return []
+            
+        data = res.json()
+        logger.debug(f"Calendar schedule raw data: {data}")
+        
+        # Combine all calendar categories (excluding 'missed')
+        combined = data.get("today", []) + data.get("soon", []) + data.get("later", [])
+        
+        from ..utils import extract_id_from_str
+        
+        records = []
+        for item in combined:
+            airdate_str = item.get("airdate")
+            if not airdate_str:
+                continue
+                
+            # Filter by start/end dates if provided
+            if start and airdate_str < start:
+                continue
+            if end and airdate_str > end:
+                continue
+                
+            series_id = int(item.get("tvdbid") or extract_id_from_str(item.get("showSlug", "0")) or 0)
+            
+            records.append({
+                "id": int(item.get("tvdbid") or extract_id_from_str(item.get("showSlug", "0")) or 0),
+                "seriesId": series_id,
+                "episodeNumber": item.get("episode"),
+                "seasonNumber": item.get("season"),
+                "title": item.get("epName", "Unknown Episode"),
+                "airDateUtc": item.get("localAirTime") or (airdate_str + "T00:00:00Z"),
+                "series": {
+                    "id": series_id,
+                    "title": item.get("showName", "Unknown"),
+                    "status": item.get("showStatus", "continuing").lower(),
+                    "images": []
+                }
+            })
+            
+        return records
+    except Exception as e:
+        logger.error(f"Calendar exception: {str(e)}")
         return []
 
 @router.get("/api/v3/wanted/missing")
 async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
     try:
-        res = await async_client.get("/api/v2/schedule", headers=medusa_headers(api_key))
+        # Request 'missed' category from Medusa's schedule
+        params = [
+            ("category[]", "missed"),
+            ("paused", "true")
+        ]
+        res = await async_client.get("/api/v2/schedule", params=params, headers=medusa_headers(api_key))
         if res.status_code != 200: 
             logger.debug(f"Wanted missing fetch failed: {res.status_code}")
             return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
         
         data = res.json()
         logger.debug(f"Wanted missing raw data: {data}")
-        combined = data.get("missed", []) + data.get("coming", [])
         
-        records = [{
-            "id": int(item.get("id", idx + 1000)),
-            "seriesId": int(item.get("seriesId", 0)),
-            "episodeNumber": item.get("episode"),
-            "seasonNumber": item.get("season"),
-            "title": item.get("title"),
-            "airDateUtc": item.get("airDate"),
-            "series": {"title": item.get("show_name", "Unknown")},
-            "monitored": True
-        } for idx, item in enumerate(combined)]
+        # Extract missed shows
+        missed = data.get("missed", [])
+        
+        from ..utils import extract_id_from_str
+        
+        records = []
+        for idx, item in enumerate(missed):
+            series_id = int(item.get("tvdbid") or extract_id_from_str(item.get("showSlug", "0")) or 0)
+            records.append({
+                "id": int(item.get("tvdbid") or extract_id_from_str(item.get("showSlug", "0")) or idx + 1000),
+                "seriesId": series_id,
+                "episodeNumber": item.get("episode"),
+                "seasonNumber": item.get("season"),
+                "title": item.get("epName", "Unknown Episode"),
+                "airDateUtc": item.get("localAirTime") or (item.get("airdate", "2026-01-01") + "T00:00:00Z"),
+                "series": {
+                    "id": series_id,
+                    "title": item.get("showName", "Unknown"),
+                    "status": item.get("showStatus", "continuing").lower(),
+                    "images": []
+                },
+                "monitored": True
+            })
         
         return {"page": 1, "pageSize": len(records) or 20, "totalRecords": len(records), "records": records}
     except Exception as e:
-        logger.debug(f"Wanted missing exception: {str(e)}")
+        logger.error(f"Wanted missing exception: {str(e)}")
         return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
 
 @router.get("/api/v3/queue")
