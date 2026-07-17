@@ -200,18 +200,18 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
             show_name = show.get("name", "Unknown Show")
             
             for ep in show.get("episodes", []):
-                # Full mapping for strict schema compliance
                 ep_id = int(extract_id_from_str(f"{series_id}{ep.get('season', 0)}{ep.get('episode', 0)}") or 0)
+                
+                # Apply history-inspired mapping structure
                 records.append({
                     "id": ep_id,
                     "seriesId": series_id,
                     "tvdbId": series_id,
-                    "episodeFileId": 0,
                     "seasonNumber": ep.get("season"),
                     "episodeNumber": ep.get("episode"),
                     "title": ep.get("name", "Unknown Episode"),
-                    "airDate": ep.get("airdate", "2026-01-01T00:00:00Z"),
-                    "airDateUtc": ep.get("airdate", "2026-01-01T00:00:00Z"),
+                    "airDate": ep.get("airdate"),
+                    "airDateUtc": ep.get("airdate"),
                     "runtime": 30,
                     "hasFile": False,
                     "monitored": True,
@@ -220,16 +220,11 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
                         "title": show_name,
                         "status": "continuing",
                         "images": build_sonarr_images(series_id, api_key=api_key),
-                        "sortTitle": show_name,
-                        "year": 2026,
-                        "path": "/dev/null"
+                        "sortTitle": show_name
                     },
-                    "images": build_sonarr_images(series_id, api_key=api_key),
-                    "episodeFile": None,
-                    "overview": ""
+                    "images": build_sonarr_images(series_id, api_key=api_key)
                 })
         
-        logger.debug(f"DEBUG: Returning {len(records)} records for Wanted/Missing. First record: {records[0] if records else 'None'}")
         return {
             "page": 1, 
             "pageSize": len(records) or 20, 
