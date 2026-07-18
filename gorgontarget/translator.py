@@ -45,10 +45,14 @@ class MedusaTranslator:
     def parse_size_to_bytes(size_str: str) -> int:
         try:
             if not size_str: return 0
-            val, unit = size_str.split()
-            val = float(val)
-            multipliers = {"GB": 10**9, "TB": 10**12, "MB": 10**6}
-            return int(val * multipliers.get(unit.upper(), 1))
+            # Handle possible string representation of numbers or formatted strings
+            if isinstance(size_str, (int, float)): return int(size_str)
+            if " " in size_str:
+                val, unit = size_str.split()
+                val = float(val)
+                multipliers = {"GB": 10**9, "TB": 10**12, "MB": 10**6, "KB": 10**3}
+                return int(val * multipliers.get(unit.upper(), 1))
+            return int(size_str)
         except (ValueError, AttributeError):
             return 0
 
@@ -61,14 +65,14 @@ class MedusaTranslator:
         # Aggregate statistics
         seasons_data = medusa_show.get("seasons", [])
         total_episodes = sum(int(s.get("episodes", 0)) for s in seasons_data)
-        # Assuming all episodes are 'wanted' or 'snatched' or 'downloaded' for percentage calculation 
-        # as a proxy since Medusa doesn't provide fine-grained per-season status easily
-        downloaded_episodes = sum(int(s.get("episodes", 0)) for s in seasons_data) # Placeholder logic for 'downloaded'
+        downloaded_episodes = sum(int(s.get("episodes", 0)) for s in seasons_data)
         percent_downloaded = (downloaded_episodes / total_episodes * 100) if total_episodes > 0 else 100
 
         seasons = []
         for s in seasons_data:
             ep_count = int(s.get("episodes", 0))
+            season_size = cls.parse_size_to_bytes(s.get("size", "0 B"))
+            
             seasons.append({
                 "seasonNumber": int(s.get("season", 0)),
                 "monitored": True,
@@ -76,19 +80,20 @@ class MedusaTranslator:
                     "episodeFileCount": ep_count,
                     "episodeCount": ep_count,
                     "totalEpisodeCount": ep_count,
-                    "sizeOnDisk": 0,
+                    "sizeOnDisk": season_size,
                     "percentOfEpisodes": 100.0
                 }
             })
 
+        total_size_on_disk = sum(cls.parse_size_to_bytes(s.get("size", "0 B")) for s in seasons_data)
         key_param = f"?api_key={api_key}" if api_key else ""
 
         return SonarrSeries(
             id=medusa_id,
             title=title,
-            tvdbId=int(ids.get("tvdb") or 0),
-            tmdbId=int(ids.get("tmdb") or 0),
-            imdbId=ids.get("imdb") or "",
+            tvdbId=int(ids.get("tvdb") or medusa_show.get("externals", {}).get("tvdb") or 0),
+            tmdbId=int(ids.get("tmdb") or medusa_show.get("externals", {}).get("tmdb") or 0),
+            imdbId=ids.get("imdb") or medusa_show.get("externals", {}).get("imdb") or "",
             sortTitle=title.lower(),
             status="continuing" if medusa_show.get("status", "").lower() == "continuing" else "ended",
             overview=medusa_show.get("plot", medusa_show.get("overview", "")),
@@ -106,17 +111,15 @@ class MedusaTranslator:
                 "episodeFileCount": total_episodes,
                 "episodeCount": total_episodes,
                 "totalEpisodeCount": total_episodes,
-                "sizeOnDisk": 0,
+                "sizeOnDisk": total_size_on_disk,
                 "percentOfEpisodes": percent_downloaded
             },
-            # Added comprehensive mapping
             network=medusa_show.get("network", "Unknown"),
             genres=medusa_show.get("genres", []),
             ratings={"votes": 0, "value": float(medusa_show.get("rating") if isinstance(medusa_show.get("rating"), (int, float, str)) else 0.0)},
             certification=medusa_show.get("certification", None),
             tags=[]
         )
-
 
     @classmethod
     def to_sonarr_episode(cls, medusa_ep: Dict[str, Any], series_id: int) -> SonarrEpisode:
