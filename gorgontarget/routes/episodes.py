@@ -316,9 +316,38 @@ async def get_wanted_missing_by_id(id: int, api_key: str = Depends(get_medusa_ke
         logger.error(f"Wanted missing by ID exception: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.get("/api/v3/queue")
-async def get_queue(page: int = 1, pageSize: int = 20, api_key: str = Depends(get_medusa_key)):
-    return {"page": page, "pageSize": pageSize, "totalRecords": 0, "records": []}
+@router.get("/api/v3/parse")
+async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa_key)):
+    try:
+        # Call Medusa's guessit endpoint
+        params = {"release": title}
+        res = await async_client.get("/api/v2/guessit", params=params, headers=medusa_headers(api_key))
+        
+        if res.status_code != 200:
+            raise HTTPException(status_code=res.status_code, detail="Failed to parse title")
+            
+        data = res.json()
+        parsed = data.get("parse", {})
+        
+        # Sonarr-compliant response structure
+        # NOTE: This mapping fills required fields with defaults to satisfy the strict schema
+        return {
+            "id": 1,
+            "title": parsed.get("title"),
+            "parsedEpisodeInfo": {
+                "releaseTitle": title,
+                "seriesTitle": parsed.get("title"),
+                "seriesTitleInfo": {"title": parsed.get("title"), "year": 0},
+                "seasonNumber": parsed.get("season", 1),
+                "episodeNumbers": parsed.get("episode", []),
+                "releaseType": "episode" if parsed.get("type") == "episode" else "unknown"
+            },
+            "series": None, # Should be populated if show is matched
+            "episodes": []
+        }
+    except Exception as e:
+        logger.error(f"Parse exception: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/api/v3/queue/status")
 async def get_queue_status(api_key: str = Depends(get_medusa_key)):
