@@ -150,6 +150,24 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
         elif name == "CheckForUpdates":
             res = await async_client.post("/api/v2/system/operation", json={"command": "check_update"}, headers=medusa_headers(api_key))
             success = res.status_code == 200
+        elif name == "dailySearch":
+            res = await async_client.put("/api/v2/search/daily", headers=medusa_headers(api_key))
+            success = res.status_code == 200
+        elif name == "backlog":
+            res = await async_client.put("/api/v2/search/backlog", headers=medusa_headers(api_key))
+            success = res.status_code == 200
+        elif name == "properFinder":
+            res = await async_client.put("/api/v2/search/proper", headers=medusa_headers(api_key))
+            success = res.status_code == 200
+        elif name == "subtitlesFinder":
+            res = await async_client.put("/api/v2/search/subtitles", headers=medusa_headers(api_key))
+            success = res.status_code == 200
+        elif name == "downloadHandler":
+            res = await async_client.post("/api/v2/system/operation", json={"type": "FORCEADH"}, headers=medusa_headers(api_key))
+            success = res.status_code == 200
+        elif name == "traktChecker":
+            res = await async_client.post("/api/v2/recommended/trakt", headers=medusa_headers(api_key))
+            success = res.status_code == 200
         
         # Commands that need a slug or series context
         elif slug or name == "EpisodeSearch":

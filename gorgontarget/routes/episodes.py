@@ -337,20 +337,26 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
             series_obj = MedusaTranslator.to_sonarr_series(show_data, api_key=api_key).dict()
         
         # Sonarr-compliant response structure
-        # NOTE: This mapping fills required fields with defaults to satisfy the strict schema
+        # Mapping as much as possible to the provided schema
         return {
             "id": 1,
             "title": parsed.get("title"),
             "parsedEpisodeInfo": {
                 "releaseTitle": title,
                 "seriesTitle": parsed.get("title"),
-                "seriesTitleInfo": {"title": parsed.get("title"), "year": 0},
+                "seriesTitleInfo": {
+                    "title": parsed.get("title"), 
+                    "year": parsed.get("year", 0),
+                    "allTitles": [parsed.get("title")] if parsed.get("title") else []
+                },
                 "seasonNumber": parsed.get("season", 1),
                 "episodeNumbers": parsed.get("episode", []),
+                "fullSeason": parsed.get("season") is not None and parsed.get("episode") is None,
                 "releaseType": "episode" if parsed.get("type") == "episode" else "unknown"
             },
             "series": series_obj,
-            "episodes": []
+            "episodes": [],
+            "languages": [{"id": 1, "name": "English"}]
         }
     except Exception as e:
         logger.error(f"Parse exception: {str(e)}")

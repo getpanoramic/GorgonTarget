@@ -175,6 +175,54 @@ async def get_download_clients(api_key: str = Depends(get_medusa_key)):
             
     return output
 
+@router.get("/api/v3/downloadclient/schema")
+async def get_download_client_schema(api_key: str = Depends(get_medusa_key)):
+    client = MedusaClient(api_key)
+    config = await client.get_system_config()
+    clients = config.get("clients", {})
+    
+    schema = []
+    
+    # Define field maps for known implementations
+    field_maps = {
+        "transmission": [
+            {"name": "host", "label": "Host", "type": "string"},
+            {"name": "username", "label": "Username", "type": "string"},
+            {"name": "password", "label": "Password", "type": "password"}
+        ],
+        "sabnzbd": [
+            {"name": "host", "label": "Host", "type": "string"},
+            {"name": "apiKey", "label": "API Key", "type": "string"}
+        ],
+        "nzbget": [
+            {"name": "host", "label": "Host", "type": "string"},
+            {"name": "username", "label": "Username", "type": "string"},
+            {"name": "password", "label": "Password", "type": "password"}
+        ]
+    }
+    
+    # Dynamic schema generation based on configured clients
+    torrent = clients.get("torrents", {})
+    if torrent.get("enabled"):
+        method = torrent.get("method")
+        schema.append({
+            "implementation": method,
+            "name": method.capitalize() if method else "Torrent",
+            "fields": field_maps.get(method, [{"name": "host", "label": "Host", "type": "string"}])
+        })
+        
+    nzb = clients.get("nzb", {})
+    if nzb.get("enabled"):
+        method = nzb.get("method")
+        if method:
+            schema.append({
+                "implementation": method,
+                "name": method.capitalize(),
+                "fields": field_maps.get(method, [{"name": "host", "label": "Host", "type": "string"}])
+            })
+            
+    return schema
+
 @router.get("/api/v3/indexer")
 async def get_indexers(api_key: str = Depends(get_medusa_key)):
     # Using your provided providers endpoint
