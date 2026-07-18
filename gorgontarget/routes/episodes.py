@@ -413,99 +413,104 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
 
 @router.get("/api/v3/release")
 async def interactive_search(episodeId: int = Query(...), api_key: str = Depends(get_medusa_key)):
-    # 1. Fetch episode details to get series/season/episode info
-    client = MedusaClient(api_key)
-    shows = await client.get_all_series()
-    
-    target_ep = None
-    target_series = None
-    
-    for show in shows:
-        series_id = extract_clean_integer_id(show)
-        episodes = await client.get_episodes(series_id)
-        for ep in episodes:
-            translated = MedusaTranslator.to_sonarr_episode(ep, series_id)
-            if translated.id == episodeId:
-                target_ep = ep
-                target_series = show
-                break
-        if target_ep: break
+    try:
+        # 1. Fetch episode details to get series/season/episode info
+        client = MedusaClient(api_key)
+        shows = await client.get_all_series()
         
-    if not target_ep:
-        raise HTTPException(status_code=404, detail="Episode not found")
+        target_ep = None
+        target_series = None
         
-    # 2. Trigger manual search in Medusa
-    slug = target_series.get("slug") or f"tvdb{target_series.get('externals', {}).get('tvdb')}"
-    season = target_ep.get("season")
-    episode = target_ep.get("episode")
-    
-    payload = {
-        "showSlug": slug,
-        "options": {},
-        "episodes": [f"s{season:02d}e{episode:02d}"]
-    }
-    
-    res = await async_client.put("/api/v2/search/manual", json=payload, headers=medusa_headers(api_key))
-    if res.status_code != 202:
-        raise HTTPException(status_code=500, detail="Failed to trigger manual search")
+        for show in shows:
+            series_id = extract_clean_integer_id(show)
+            episodes = await client.get_episodes(series_id)
+            for ep in episodes:
+                translated = MedusaTranslator.to_sonarr_episode(ep, series_id)
+                if translated.id == episodeId:
+                    target_ep = ep
+                    target_series = show
+                    break
+            if target_ep: break
+            
+        if not target_ep:
+            raise HTTPException(status_code=404, detail="Episode not found")
+            
+        # 2. Trigger manual search in Medusa
+        slug = target_series.get("slug") or f"tvdb{target_series.get('externals', {}).get('tvdb')}"
+        season = target_ep.get("season")
+        episode = target_ep.get("episode")
         
-    # 3. Poll for results
-    search_url = f"/api/v2/providers/all/results"
-    params = {
-        "limit": 1000,
-        "showslug": slug,
-        "season": season,
-        "episode": episode,
-        "page": 1
-    }
-    
-    for _ in range(5):
-        import asyncio
-        await asyncio.sleep(2)
-        res = await async_client.get(search_url, params=params, headers=medusa_headers(api_key))
-        if res.status_code == 200:
-            results = res.json()
-            if results:
-                # Map to Sonarr release format
-                return [
-                    {
-                        "id": i + 1,
-                        "guid": r.get("identifier"),
-                        "title": r.get("release"),
-                        "indexerId": r.get("indexer", 0),
-                        "indexer": r.get("provider", {}).get("name"),
-                        "seriesId": r.get("seriesId"),
-                        "episodeIds": [episodeId],
-                        "quality": {
-                            "quality": {"id": 1, "name": "Unknown", "source": "unknown", "resolution": 0},
-                            "revision": {"version": 1, "real": 0, "isRepack": False}
-                        },
-                        "size": r.get("size", 0),
-                        "seeders": r.get("seeders"),
-                        "leechers": r.get("leechers"),
-                        "publishDate": r.get("pubdate"),
-                        "downloadUrl": r.get("url"),
-                        "infoUrl": r.get("url"),
-                        "protocol": "torrent",
-                        "languages": [{"id": 1, "name": "English"}],
-                        "seasonNumber": r.get("season"),
-                        "episodeNumbers": r.get("episodes", []),
-                        "mappedEpisodeInfo": [
-                            {
-                                "id": episodeId,
-                                "seasonNumber": r.get("season"),
-                                "episodeNumber": ep,
-                                "title": r.get("release")
-                            }
-                            for ep in r.get("episodes", [])
-                        ],
-                        "approved": True,
-                        "downloadAllowed": True
-                    }
-                    for i, r in enumerate(results)
-                ]
-    
-    return []
+        payload = {
+            "showSlug": slug,
+            "options": {},
+            "episodes": [f"s{season:02d}e{episode:02d}"]
+        }
+        
+        res = await async_client.put("/api/v2/search/manual", json=payload, headers=medusa_headers(api_key))
+        if res.status_code != 202:
+            logger.error(f"Manual search trigger failed: {res.status_code} {res.text}")
+            raise HTTPException(status_code=500, detail=f"Failed to trigger manual search: {res.text}")
+            
+        # 3. Poll for results
+        search_url = f"/api/v2/providers/all/results"
+        params = {
+            "limit": 1000,
+            "showslug": slug,
+            "season": season,
+            "episode": episode,
+            "page": 1
+        }
+        
+        for _ in range(5):
+            import asyncio
+            await asyncio.sleep(2)
+            res = await async_client.get(search_url, params=params, headers=medusa_headers(api_key))
+            if res.status_code == 200:
+                results = res.json()
+                if results:
+                    # Map to Sonarr release format
+                    return [
+                        {
+                            "id": i + 1,
+                            "guid": r.get("identifier"),
+                            "title": r.get("release"),
+                            "indexerId": r.get("indexer", 0),
+                            "indexer": r.get("provider", {}).get("name"),
+                            "seriesId": r.get("seriesId"),
+                            "episodeIds": [episodeId],
+                            "quality": {
+                                "quality": {"id": 1, "name": "Unknown", "source": "unknown", "resolution": 0},
+                                "revision": {"version": 1, "real": 0, "isRepack": False}
+                            },
+                            "size": r.get("size", 0),
+                            "seeders": r.get("seeders"),
+                            "leechers": r.get("leechers"),
+                            "publishDate": r.get("pubdate"),
+                            "downloadUrl": r.get("url"),
+                            "infoUrl": r.get("url"),
+                            "protocol": "torrent",
+                            "languages": [{"id": 1, "name": "English"}],
+                            "seasonNumber": r.get("season"),
+                            "episodeNumbers": r.get("episodes", []),
+                            "mappedEpisodeInfo": [
+                                {
+                                    "id": episodeId,
+                                    "seasonNumber": r.get("season"),
+                                    "episodeNumber": ep,
+                                    "title": r.get("release")
+                                }
+                                for ep in r.get("episodes", [])
+                            ],
+                            "approved": True,
+                            "downloadAllowed": True
+                        }
+                        for i, r in enumerate(results)
+                    ]
+        
+        return []
+    except Exception as e:
+        logger.exception(f"Interactive search exception: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/v3/queue")
 async def get_queue(page: int = Query(1), pageSize: int = Query(20), api_key: str = Depends(get_medusa_key)):
