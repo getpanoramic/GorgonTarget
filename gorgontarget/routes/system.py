@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, HTTPException, status
 from typing import Optional
 from ..utils import async_client, get_medusa_key, medusa_headers, logger, parse_medusa_size
 from ..client import MedusaClient
@@ -50,11 +50,47 @@ async def get_system_tasks(api_key: str = Depends(get_medusa_key)):
             "id": i + 1,
             "name": s.get("name"),
             "taskName": s.get("key"),
-            "interval": f"{s.get('cycleTime', 0)}s",
-            "enabled": s.get("isEnabled", False)
+            "interval": s.get("cycleTime"),
+            "lastExecution": s.get("lastRun"),
+            "lastStartTime": s.get("lastRun"),
+            "nextExecution": s.get("nextRun"),
+            "lastDuration": "N/A"
         }
         for i, s in enumerate(schedulers)
     ]
+
+@router.post("/api/v3/system/task/{task_name}")
+async def trigger_task(task_name: str, api_key: str = Depends(get_medusa_key)):
+    headers = medusa_headers(api_key)
+    
+    # Task mapping to Medusa API
+    mapping = {
+        "dailySearch": ("/api/v2/search/daily", "PUT"),
+        "backlog": ("/api/v2/search/backlog", "PUT"),
+        "properFinder": ("/api/v2/search/proper", "PUT"),
+        "subtitlesFinder": ("/api/v2/search/subtitles", "PUT"),
+        "downloadHandler": ("/api/v2/system/operation", "POST"),
+        "traktChecker": ("/api/v2/recommended/trakt", "POST")
+    }
+    
+    if task_name not in mapping:
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    path, method = mapping[task_name]
+    
+    payload = {}
+    if task_name == "downloadHandler":
+        payload = {"type": "FORCEADH"}
+        
+    if method == "PUT":
+        res = await async_client.put(path, headers=headers)
+    else:
+        res = await async_client.post(path, json=payload, headers=headers)
+        
+    if res.status_code not in [200, 201]:
+        raise HTTPException(status_code=500, detail="Failed to trigger task")
+        
+    return {"status": "success"}
 
 @router.get("/api/system/status")
 @router.get("/api/v3/system/status")
@@ -103,46 +139,39 @@ async def get_diskspace(api_key: str = Depends(get_medusa_key)):
 
 @router.get("/api/v3/downloadclient")
 async def get_download_clients(api_key: str = Depends(get_medusa_key)):
-    res = await async_client.get("/api/v2/config", headers=medusa_headers(api_key))
-    if res.status_code != 200: 
-        return []
-    
-    data = res.json()
-    clients_data = data.get("clients", {})
+    client = MedusaClient(api_key)
+    config = await client.get_system_config()
+    clients = config.get("clients", {})
     output = []
-    
-    # 1. Map Torrent client (Transmission)
-    torrent = clients_data.get("torrents", {})
+    client_id = 1
+
+    # Torrent Clients
+    torrent = clients.get("torrents", {})
     if torrent.get("enabled"):
+        method = torrent.get("method")
         output.append({
-            "id": 1,
-            "name": f"Transmission ({torrent.get('method')})",
+            "id": client_id,
+            "name": f"{method.capitalize() if method else 'Torrent'} ({torrent.get('host', 'unknown')})",
             "enable": True,
             "protocol": "torrent",
-            "implementation": torrent.get("method", "transmission")
+            "implementation": method
         })
+        client_id += 1
 
-    # 2. Map NZB clients (SABnzbd/NZBGet)
-    nzb = clients_data.get("nzb", {})
+    # NZB Clients
+    nzb = clients.get("nzb", {})
     if nzb.get("enabled"):
-        # Check for SABnzbd
-        if nzb.get("sabnzbd"):
+        method = nzb.get("method")
+        if method and method in nzb:
+            details = nzb.get(method, {})
             output.append({
-                "id": 2,
-                "name": "SABnzbd",
+                "id": client_id,
+                "name": f"{method.capitalize()} ({details.get('host', 'unknown')})",
                 "enable": True,
                 "protocol": "usenet",
-                "implementation": "sabnzbd"
+                "implementation": method
             })
-        # Check for NZBGet
-        if nzb.get("nzbget"):
-            output.append({
-                "id": 3,
-                "name": "NZBGet",
-                "enable": True,
-                "protocol": "usenet",
-                "implementation": "nzbget"
-            })
+            client_id += 1
             
     return output
 

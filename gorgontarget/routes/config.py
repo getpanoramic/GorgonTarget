@@ -6,11 +6,14 @@ router = APIRouter()
 
 async def get_medusa_client(api_key: str = Depends(get_medusa_key)):
     return MedusaClient(api_key)
-
 @router.get("/api/v3/config/host")
 async def get_config_host(client: MedusaClient = Depends(get_medusa_client)):
     config = await client.get_system_config()
-    web_interface = config.get("main", {}).get("webInterface", {})
+    main = config.get("main", {})
+    web_interface = main.get("webInterface", {})
+    logs = main.get("logs", {})
+    git = main.get("git", {})
+
     # Map Medusa config to the new schema
     return {
         "id": 1,
@@ -18,7 +21,7 @@ async def get_config_host(client: MedusaClient = Depends(get_medusa_client)):
         "port": web_interface.get("port"),
         "sslPort": web_interface.get("port") if web_interface.get("httpsEnable") else 0,
         "enableSsl": web_interface.get("httpsEnable", False),
-        "launchBrowser": config.get("main", {}).get("launchBrowser", False),
+        "launchBrowser": main.get("launchBrowser", False),
         "authenticationMethod": "basic" if web_interface.get("username") else "none",
         "authenticationRequired": "enabled" if web_interface.get("username") else "disabled",
         "analyticsEnabled": True,
@@ -26,19 +29,19 @@ async def get_config_host(client: MedusaClient = Depends(get_medusa_client)):
         "password": web_interface.get("password"),
         "passwordConfirmation": web_interface.get("password"),
         "logLevel": "info",
-        "logSizeLimit": 20,
+        "logSizeLimit": logs.get("size", 20),
         "consoleLogLevel": "info",
-        "branch": "master",
+        "branch": git.get("branch") or "master",
         "apiKey": web_interface.get("apiKey"),
         "sslCertPath": web_interface.get("httpsCert"),
         "sslCertPassword": web_interface.get("httpsKey"),
-        "urlBase": config.get("main", {}).get("webRoot"),
+        "urlBase": main.get("webRoot"),
         "instanceName": "GorgonTarget",
         "applicationUrl": None,
-        "updateAutomatically": config.get("main", {}).get("autoUpdate", False),
+        "updateAutomatically": main.get("autoUpdate", False),
         "updateMechanism": "builtIn",
         "updateScriptPath": None,
-        "proxyEnabled": bool(config.get("main", {}).get("proxySetting")),
+        "proxyEnabled": bool(main.get("proxySetting")),
         "proxyType": "http",
         "proxyHostname": None,
         "proxyPort": 0,
@@ -52,6 +55,7 @@ async def get_config_host(client: MedusaClient = Depends(get_medusa_client)):
         "backupRetention": 0,
         "trustCgnatIpAddresses": True
     }
+
 
 @router.get("/api/v3/config/indexer")
 async def get_config_indexer(client: MedusaClient = Depends(get_medusa_client)):
