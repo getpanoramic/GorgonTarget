@@ -15,6 +15,16 @@ async def test_missing_auth_rejected(async_app_client):
     assert "Missing API Key" in response.json()["detail"]
 
 @pytest.mark.asyncio
+async def test_get_system_tasks(async_app_client):
+    response = await async_app_client.get("/api/v3/system/task", headers={"X-Api-Key": "testkey"})
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) > 0
+    assert data[0]["name"] == "CheckForUpdates"
+
+@pytest.mark.asyncio
 @patch("gorgontarget.routes.system.core_system_status")
 async def test_system_status(mock_core_status, async_app_client):
     # Mock the internal function so no real network requests are made

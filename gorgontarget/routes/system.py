@@ -39,6 +39,15 @@ async def core_system_status(api_key: str):
         "appName": "Sonarr"
     }
 
+@router.get("/api/v3/system/task")
+async def get_system_tasks(api_key: str = Depends(get_medusa_key)):
+    # Returning a list of available system tasks
+    return [
+        {"id": 1, "name": "CheckForUpdates", "taskName": "CheckForUpdates", "interval": "12h", "enabled": True},
+        {"id": 2, "name": "RefreshSeries", "taskName": "RefreshSeries", "interval": "12h", "enabled": True},
+        {"id": 3, "name": "RescanSeries", "taskName": "RescanSeries", "interval": "12h", "enabled": True},
+    ]
+
 @router.get("/api/system/status")
 @router.get("/api/v3/system/status")
 async def get_system_status(api_key: str = Depends(get_medusa_key)):
