@@ -316,96 +316,101 @@ async def get_wanted_missing_by_id(id: int, api_key: str = Depends(get_medusa_ke
         logger.error(f"Wanted missing by ID exception: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.get("/api/v3/parse")
-async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa_key)):
-    try:
-        # Call Medusa's guessit endpoint
-        params = {"release": title}
-        res = await async_client.get("/api/v2/guessit", params=params, headers=medusa_headers(api_key))
+@router.get("/api/v3/release")
+async def interactive_search(episodeId: int = Query(...), api_key: str = Depends(get_medusa_key)):
+    # 1. Fetch episode details to get series/season/episode info
+    client = MedusaClient(api_key)
+    shows = await client.get_all_series()
+    
+    target_ep = None
+    target_series = None
+    
+    for show in shows:
+        series_id = extract_clean_integer_id(show)
+        episodes = await client.get_episodes(series_id)
+        for ep in episodes:
+            translated = MedusaTranslator.to_sonarr_episode(ep, series_id)
+            if translated.id == episodeId:
+                target_ep = ep
+                target_series = show
+                break
+        if target_ep: break
         
-        if res.status_code != 200:
-            raise HTTPException(status_code=res.status_code, detail="Failed to parse title")
-            
-        data = res.json()
-        logger.debug(f"DEBUG: FORENSIC Medusa guessit response: {data}")
-        parsed = data.get("parse", {})
-        quality_str = parsed.get("screen_size", "unknown")
+    if not target_ep:
+        raise HTTPException(status_code=404, detail="Episode not found")
         
-        # Build base structure based on the provided comprehensive schema
-        response = {
-            "id": 1,
-            "title": parsed.get("title"),
-            "parsedEpisodeInfo": {
-                "releaseTitle": title,
-                "seriesTitle": parsed.get("title"),
-                "seriesTitleInfo": {
-                    "title": parsed.get("title"), 
-                    "titleWithoutYear": parsed.get("title"),
-                    "year": parsed.get("year", 0),
-                    "allTitles": [parsed.get("title")] if parsed.get("title") else []
-                },
-                "quality": {
-                    "quality": {
-                        "id": 1, 
-                        "name": quality_str, 
-                        "source": "unknown", 
-                        "resolution": 1080 if "1080" in quality_str else 720 if "720" in quality_str else 0
-                    },
-                    "revision": {"version": 1, "real": 0, "isRepack": False}
-                },
-                "seasonNumber": parsed.get("season", 1),
-                "episodeNumbers": [parsed.get("episode")] if parsed.get("episode") is not None else [],
-                "absoluteEpisodeNumbers": [],
-                "specialAbsoluteEpisodeNumbers": [],
-                "languages": [{"id": 1, "name": "English"}],
-                "fullSeason": parsed.get("season") is not None and parsed.get("episode") is None,
-                "isPartialSeason": False,
-                "isMultiSeason": False,
-                "isSeasonExtra": False,
-                "isSplitEpisode": False,
-                "isMiniSeries": False,
-                "special": False,
-                "releaseType": "episode" if parsed.get("type") == "episode" else "unknown"
-            },
-            "series": {
-                "id": 1,
-                "title": parsed.get("title"),
-                "alternateTitles": [],
-                "status": "continuing",
-                "year": parsed.get("year", 0),
-                "images": [],
-                "originalLanguage": {"id": 1, "name": "English"},
-                "seasons": [],
-                "genres": [],
-                "tags": [],
-                "addOptions": {
-                    "ignoreEpisodesWithFiles": True,
-                    "ignoreEpisodesWithoutFiles": True,
-                    "monitor": "unknown",
-                    "searchForMissingEpisodes": True,
-                    "searchForCutoffUnmetEpisodes": True
-                },
-                "ratings": {"votes": 0, "value": 0},
-                "statistics": {
-                    "seasonCount": 0,
-                    "episodeFileCount": 0,
-                    "episodeCount": 0,
-                    "totalEpisodeCount": 0,
-                    "sizeOnDisk": 0,
-                    "releaseGroups": [],
-                    "percentOfEpisodes": 0
-                }
-            },
-            "episodes": [],
-            "languages": [{"id": 1, "name": "English"}],
-            "customFormats": [],
-            "customFormatScore": 0
-        }
+    # 2. Trigger manual search in Medusa
+    slug = target_series.get("slug") or f"tvdb{target_series.get('externals', {}).get('tvdb')}"
+    season = target_ep.get("season")
+    episode = target_ep.get("episode")
+    
+    payload = {
+        "showSlug": slug,
+        "options": {},
+        "episodes": [f"s{season:02d}e{episode:02d}"]
+    }
+    
+    res = await async_client.put("/api/v2/search/manual", json=payload, headers=medusa_headers(api_key))
+    if res.status_code != 202:
+        raise HTTPException(status_code=500, detail="Failed to trigger manual search")
         
-        return response
-    except Exception as e:
-        logger.error(f"Parse exception: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+    # 3. Poll for results
+    search_url = f"/api/v2/providers/all/results"
+    params = {
+        "limit": 1000,
+        "showslug": slug,
+        "season": season,
+        "episode": episode,
+        "page": 1
+    }
+    
+    for _ in range(5):
+        import asyncio
+        await asyncio.sleep(2)
+        res = await async_client.get(search_url, params=params, headers=medusa_headers(api_key))
+        if res.status_code == 200:
+            results = res.json()
+            if results:
+                # Map to Sonarr release format
+                return [
+                    {
+                        "id": i + 1,
+                        "guid": r.get("identifier"),
+                        "title": r.get("release"),
+                        "indexerId": r.get("indexer", 0),
+                        "indexer": r.get("provider", {}).get("name"),
+                        "seriesId": r.get("seriesId"),
+                        "episodeIds": [episodeId],
+                        "quality": {
+                            "quality": {"id": 1, "name": "Unknown", "source": "unknown", "resolution": 0},
+                            "revision": {"version": 1, "real": 0, "isRepack": False}
+                        },
+                        "size": r.get("size", 0),
+                        "seeders": r.get("seeders"),
+                        "leechers": r.get("leechers"),
+                        "publishDate": r.get("pubdate"),
+                        "downloadUrl": r.get("url"),
+                        "infoUrl": r.get("url"),
+                        "protocol": "torrent",
+                        "languages": [{"id": 1, "name": "English"}],
+                        "seasonNumber": r.get("season"),
+                        "episodeNumbers": r.get("episodes", []),
+                        "mappedEpisodeInfo": [
+                            {
+                                "id": episodeId,
+                                "seasonNumber": r.get("season"),
+                                "episodeNumber": ep,
+                                "title": r.get("release")
+                            }
+                            for ep in r.get("episodes", [])
+                        ],
+                        "approved": True,
+                        "downloadAllowed": True
+                    }
+                    for i, r in enumerate(results)
+                ]
+    
+    return []
 
 @router.get("/api/v3/queue")
 async def get_queue(page: int = Query(1), pageSize: int = Query(20), api_key: str = Depends(get_medusa_key)):

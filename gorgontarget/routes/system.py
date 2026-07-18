@@ -116,23 +116,25 @@ async def get_diskspace(api_key: str = Depends(get_medusa_key)):
     # Map TV Download Directory
     tv_download = disk_space.get("tvDownloadDir", {})
     if tv_download:
+        free_bytes = parse_medusa_size(tv_download.get("freeSpace", "0 GB"))
         output.append({
             "id": 1,
             "path": tv_download.get("location"),
             "label": tv_download.get("type"),
-            "freeSpace": parse_medusa_size(tv_download.get("freeSpace", "0 GB")),
-            "totalSpace": 0 # Not available in Medusa config
+            "freeSpace": free_bytes,
+            "totalSpace": int(free_bytes * 1.5) # Estimate total to prevent UI errors
         })
         
     # Map Root Directories
     root_dirs = disk_space.get("rootDir", [])
     for i, d in enumerate(root_dirs):
+        free_bytes = parse_medusa_size(d.get("freeSpace", "0 GB"))
         output.append({
             "id": i + 2,
             "path": d.get("location"),
             "label": d.get("type"),
-            "freeSpace": parse_medusa_size(d.get("freeSpace", "0 GB")),
-            "totalSpace": 0 # Not available in Medusa config
+            "freeSpace": free_bytes,
+            "totalSpace": int(free_bytes * 1.5) # Estimate total to prevent UI errors
         })
             
     return output
