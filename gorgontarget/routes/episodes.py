@@ -476,12 +476,16 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
             "page": 1
         }
         
-        for _ in range(5):
+        logger.debug(f"DEBUG: Starting search poll for slug: {slug}")
+        # Increased polling: 10 * 3s = 30 seconds
+        for i in range(10):
             import asyncio
-            await asyncio.sleep(2)
+            await asyncio.sleep(3)
             res = await async_client.get(search_url, params=params, headers=medusa_headers(api_key))
+            logger.debug(f"DEBUG: Poll {i+1} status: {res.status_code}")
             if res.status_code == 200:
                 results = res.json()
+                logger.debug(f"DEBUG: Poll {i+1} results count: {len(results) if isinstance(results, list) else 'N/A'}")
                 if results:
                     # Map to Sonarr release format
                     return [
@@ -522,6 +526,7 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
                         for i, r in enumerate(results)
                     ]
         
+        logger.warning(f"DEBUG: Search poll timed out for slug: {slug}")
         return []
     except Exception as e:
         logger.exception(f"Interactive search exception: {str(e)}")
