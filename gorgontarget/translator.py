@@ -88,12 +88,17 @@ class MedusaTranslator:
         total_size_on_disk = sum(cls.parse_size_to_bytes(s.get("size", "0 B")) for s in seasons_data)
         key_param = f"?api_key={api_key}" if api_key else ""
 
+        # Robust imdbId extraction
+        imdb_val = ids.get("imdb") or medusa_show.get("externals", {}).get("imdb") or medusa_show.get("imdbInfo", {}).get("imdbId") or ""
+        if isinstance(imdb_val, int):
+            imdb_val = f"tt{imdb_val:07d}"
+        
         return SonarrSeries(
             id=medusa_id,
             title=title,
             tvdbId=int(ids.get("tvdb") or medusa_show.get("externals", {}).get("tvdb") or 0),
             tmdbId=int(ids.get("tmdb") or medusa_show.get("externals", {}).get("tmdb") or 0),
-            imdbId=str(ids.get("imdb") or medusa_show.get("externals", {}).get("imdb") or ""),
+            imdbId=str(imdb_val),
             sortTitle=title.lower(),
             status="continuing" if medusa_show.get("status", "").lower() == "continuing" else "ended",
             overview=medusa_show.get("plot", medusa_show.get("overview", "")),
