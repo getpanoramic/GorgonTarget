@@ -466,65 +466,77 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
             logger.error(f"Manual search trigger failed: {res.status_code} {res.text}")
             raise HTTPException(status_code=500, detail=f"Failed to trigger manual search: {res.text}")
             
-        # 3. Poll for results
-        search_url = f"/api/v2/providers/all/results"
-        params = {
-            "limit": 1000,
-            "showslug": slug,
-            "season": season,
-            "episode": episode,
-            "page": 1
-        }
+        # 3. Poll for results from all enabled providers
+        providers_res = await async_client.get("/api/v2/providers", headers=medusa_headers(api_key))
+        enabled_providers = []
+        if providers_res.status_code == 200:
+            providers = providers_res.json()
+            enabled_providers = [p.get("id") for p in providers if p.get("enabled", True)]
         
-        logger.debug(f"DEBUG: Starting search poll for slug: {slug}")
-        # Increased polling: 10 * 3s = 30 seconds
-        for i in range(10):
+        logger.debug(f"DEBUG: Providers to poll: {enabled_providers}")
+        
+        results = []
+        for _ in range(5):
             import asyncio
             await asyncio.sleep(3)
-            res = await async_client.get(search_url, params=params, headers=medusa_headers(api_key))
-            logger.debug(f"DEBUG: Poll {i+1} status: {res.status_code}")
-            if res.status_code == 200:
-                results = res.json()
-                logger.debug(f"DEBUG: Poll {i+1} results count: {len(results) if isinstance(results, list) else 'N/A'}")
-                if results:
-                    # Map to Sonarr release format
-                    return [
+            
+            current_poll_results = []
+            for provider_id in enabled_providers:
+                search_url = f"/api/v2/providers/{provider_id}/results"
+                params = {
+                    "limit": 100,
+                    "showslug": slug,
+                    "season": season,
+                    "episode": episode,
+                    "page": 1
+                }
+                res = await async_client.get(search_url, params=params, headers=medusa_headers(api_key))
+                if res.status_code == 200:
+                    current_poll_results.extend(res.json())
+            
+            if current_poll_results:
+                results = current_poll_results
+                break
+        
+        if results:
+            # Map to Sonarr release format
+            return [
+                {
+                    "id": i + 1,
+                    "guid": r.get("identifier"),
+                    "title": r.get("release"),
+                    "indexerId": i,
+                    "indexer": r.get("provider", {}).get("name"),
+                    "seriesId": r.get("seriesId"),
+                    "episodeIds": [episodeId],
+                    "quality": {
+                        "quality": {"id": 1, "name": "Unknown", "source": "unknown", "resolution": 0},
+                        "revision": {"version": 1, "real": 0, "isRepack": False}
+                    },
+                    "size": r.get("size", 0),
+                    "seeders": r.get("seeders"),
+                    "leechers": r.get("leechers"),
+                    "publishDate": r.get("pubdate"),
+                    "downloadUrl": r.get("url"),
+                    "infoUrl": r.get("url"),
+                    "protocol": "torrent",
+                    "languages": [{"id": 1, "name": "English"}],
+                    "seasonNumber": r.get("season"),
+                    "episodeNumbers": r.get("episodes", []),
+                    "mappedEpisodeInfo": [
                         {
-                            "id": i + 1,
-                            "guid": r.get("identifier"),
-                            "title": r.get("release"),
-                            "indexerId": r.get("indexer", 0),
-                            "indexer": r.get("provider", {}).get("name"),
-                            "seriesId": r.get("seriesId"),
-                            "episodeIds": [episodeId],
-                            "quality": {
-                                "quality": {"id": 1, "name": "Unknown", "source": "unknown", "resolution": 0},
-                                "revision": {"version": 1, "real": 0, "isRepack": False}
-                            },
-                            "size": r.get("size", 0),
-                            "seeders": r.get("seeders"),
-                            "leechers": r.get("leechers"),
-                            "publishDate": r.get("pubdate"),
-                            "downloadUrl": r.get("url"),
-                            "infoUrl": r.get("url"),
-                            "protocol": "torrent",
-                            "languages": [{"id": 1, "name": "English"}],
+                            "id": episodeId,
                             "seasonNumber": r.get("season"),
-                            "episodeNumbers": r.get("episodes", []),
-                            "mappedEpisodeInfo": [
-                                {
-                                    "id": episodeId,
-                                    "seasonNumber": r.get("season"),
-                                    "episodeNumber": ep,
-                                    "title": r.get("release")
-                                }
-                                for ep in r.get("episodes", [])
-                            ],
-                            "approved": True,
-                            "downloadAllowed": True
+                            "episodeNumber": ep,
+                            "title": r.get("release")
                         }
-                        for i, r in enumerate(results)
-                    ]
+                        for ep in r.get("episodes", [])
+                    ],
+                    "approved": True,
+                    "downloadAllowed": True
+                }
+                for i, r in enumerate(results)
+            ]
         
         logger.warning(f"DEBUG: Search poll timed out for slug: {slug}")
         return []
