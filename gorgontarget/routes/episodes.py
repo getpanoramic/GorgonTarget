@@ -327,6 +327,7 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
             raise HTTPException(status_code=res.status_code, detail="Failed to parse title")
             
         data = res.json()
+        logger.debug(f"DEBUG: FORENSIC Medusa guessit response: {data}")
         parsed = data.get("parse", {})
         
         # Sonarr-compliant response structure
@@ -349,6 +350,79 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
         logger.error(f"Parse exception: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@router.get("/api/v3/queue")
+async def get_queue(page: int = Query(1), pageSize: int = Query(20), api_key: str = Depends(get_medusa_key)):
+    try:
+        # Fetch active queue from Medusa
+        res = await async_client.get("/api/v2/queue", headers=medusa_headers(api_key))
+        
+        if res.status_code != 200:
+            return {"page": 1, "pageSize": pageSize, "totalRecords": 0, "records": []}
+            
+        data = res.json()
+        
+        records = []
+        for item in data.get("queue", []):
+            # Create a placeholder structure compliant with the schema
+            record = {
+                "id": int(item.get("id", 1)),
+                "seriesId": None,
+                "episodeId": None,
+                "seasonNumber": None,
+                "series": {
+                    "id": 1,
+                    "title": item.get("showName"),
+                    "status": "continuing",
+                    "images": [],
+                    "year": 2026
+                },
+                "episode": {
+                    "id": 1,
+                    "seriesId": 1,
+                    "seasonNumber": 1,
+                    "episodeNumber": 1,
+                    "title": item.get("epName"),
+                    "hasFile": False,
+                    "monitored": True,
+                    "episodeFile": None,
+                    "series": {
+                        "id": 1,
+                        "title": item.get("showName"),
+                        "status": "continuing",
+                        "images": []
+                    },
+                    "images": []
+                },
+                "languages": [{"id": 1, "name": "English"}],
+                "quality": {
+                    "quality": {"id": 1, "name": "Unknown", "source": "unknown", "resolution": 0},
+                    "revision": {"version": 1, "real": 0, "isRepack": False}
+                },
+                "customFormats": [],
+                "customFormatScore": 1,
+                "qualityCutoffNotMet": True,
+                "date": "2026-07-17T00:00:00Z",
+                "size": item.get("size", 0),
+                "title": item.get("epName"),
+                "status": "downloading",
+                "trackedDownloadStatus": "ok",
+                "trackedDownloadState": "downloading",
+                "episodeHasFile": False
+            }
+            records.append(record)
+            
+        return {
+            "page": page,
+            "pageSize": pageSize,
+            "totalRecords": len(records),
+            "records": records
+        }
+    except Exception as e:
+        logger.error(f"Queue exception: {str(e)}")
+        return {"page": 1, "pageSize": pageSize, "totalRecords": 0, "records": []}
+
 @router.get("/api/v3/queue/status")
 async def get_queue_status(api_key: str = Depends(get_medusa_key)):
+    # Medusa doesn't have a direct 'queue/status' endpoint, returning placeholder 
+    # to avoid 404/errors in the client
     return {"totalCount": 0, "count": 0, "pageSize": 20, "sortKey": "timeleft", "unknownQueueItems": 0, "queued": 0, "downloading": 0, "failed": 0, "errors": False, "warnings": False}
