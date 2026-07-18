@@ -329,16 +329,10 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
         data = res.json()
         logger.debug(f"DEBUG: FORENSIC Medusa guessit response: {data}")
         parsed = data.get("parse", {})
-        show_data = data.get("show")
+        quality_str = parsed.get("screen_size", "unknown")
         
-        series_obj = None
-        if show_data:
-            # Use the translator to generate a Sonarr-compliant series object
-            series_obj = MedusaTranslator.to_sonarr_series(show_data, api_key=api_key).dict()
-        
-        # Sonarr-compliant response structure
-        # Mapping as much as possible to the provided schema
-        return {
+        # Build base structure based on the provided comprehensive schema
+        response = {
             "id": 1,
             "title": parsed.get("title"),
             "parsedEpisodeInfo": {
@@ -346,18 +340,69 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
                 "seriesTitle": parsed.get("title"),
                 "seriesTitleInfo": {
                     "title": parsed.get("title"), 
+                    "titleWithoutYear": parsed.get("title"),
                     "year": parsed.get("year", 0),
                     "allTitles": [parsed.get("title")] if parsed.get("title") else []
                 },
+                "quality": {
+                    "quality": {
+                        "id": 1, 
+                        "name": quality_str, 
+                        "source": "unknown", 
+                        "resolution": 1080 if "1080" in quality_str else 720 if "720" in quality_str else 0
+                    },
+                    "revision": {"version": 1, "real": 0, "isRepack": False}
+                },
                 "seasonNumber": parsed.get("season", 1),
-                "episodeNumbers": parsed.get("episode", []),
+                "episodeNumbers": [parsed.get("episode")] if parsed.get("episode") is not None else [],
+                "absoluteEpisodeNumbers": [],
+                "specialAbsoluteEpisodeNumbers": [],
+                "languages": [{"id": 1, "name": "English"}],
                 "fullSeason": parsed.get("season") is not None and parsed.get("episode") is None,
+                "isPartialSeason": False,
+                "isMultiSeason": False,
+                "isSeasonExtra": False,
+                "isSplitEpisode": False,
+                "isMiniSeries": False,
+                "special": False,
                 "releaseType": "episode" if parsed.get("type") == "episode" else "unknown"
             },
-            "series": series_obj,
+            "series": {
+                "id": 1,
+                "title": parsed.get("title"),
+                "alternateTitles": [],
+                "status": "continuing",
+                "year": parsed.get("year", 0),
+                "images": [],
+                "originalLanguage": {"id": 1, "name": "English"},
+                "seasons": [],
+                "genres": [],
+                "tags": [],
+                "addOptions": {
+                    "ignoreEpisodesWithFiles": True,
+                    "ignoreEpisodesWithoutFiles": True,
+                    "monitor": "unknown",
+                    "searchForMissingEpisodes": True,
+                    "searchForCutoffUnmetEpisodes": True
+                },
+                "ratings": {"votes": 0, "value": 0},
+                "statistics": {
+                    "seasonCount": 0,
+                    "episodeFileCount": 0,
+                    "episodeCount": 0,
+                    "totalEpisodeCount": 0,
+                    "sizeOnDisk": 0,
+                    "releaseGroups": [],
+                    "percentOfEpisodes": 0
+                }
+            },
             "episodes": [],
-            "languages": [{"id": 1, "name": "English"}]
+            "languages": [{"id": 1, "name": "English"}],
+            "customFormats": [],
+            "customFormatScore": 0
         }
+        
+        return response
     except Exception as e:
         logger.error(f"Parse exception: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")

@@ -93,7 +93,7 @@ class MedusaTranslator:
             title=title,
             tvdbId=int(ids.get("tvdb") or medusa_show.get("externals", {}).get("tvdb") or 0),
             tmdbId=int(ids.get("tmdb") or medusa_show.get("externals", {}).get("tmdb") or 0),
-            imdbId=ids.get("imdb") or medusa_show.get("externals", {}).get("imdb") or "",
+            imdbId=str(ids.get("imdb") or medusa_show.get("externals", {}).get("imdb") or ""),
             sortTitle=title.lower(),
             status="continuing" if medusa_show.get("status", "").lower() == "continuing" else "ended",
             overview=medusa_show.get("plot", medusa_show.get("overview", "")),
