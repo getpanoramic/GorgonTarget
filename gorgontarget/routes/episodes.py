@@ -411,6 +411,28 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
         logger.error(f"Parse exception: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@router.post("/api/v3/release")
+async def download_release(release: dict, api_key: str = Depends(get_medusa_key)):
+    # Trigger download in Medusa via pickManualSearch
+    # Payload from result: {"provider": "...", "identifier": "..."}
+    provider = release.get("indexer") # 'provider' in Medusa results
+    identifier = release.get("guid") # 'identifier' in Medusa results
+    
+    if not provider or not identifier:
+        raise HTTPException(status_code=400, detail="Missing provider or identifier")
+        
+    # Triggering the GET request to Medusa
+    params = {"provider": provider, "identifier": identifier}
+    logger.debug(f"DEBUG: Triggering download for provider: {provider}, identifier: {identifier}")
+    
+    res = await async_client.get("/home/pickManualSearch", params=params, headers=medusa_headers(api_key))
+    
+    if res.status_code != 200:
+        logger.error(f"Download trigger failed: {res.status_code} {res.text}")
+        raise HTTPException(status_code=500, detail=f"Failed to trigger download: {res.text}")
+    
+    return {"status": "success"}
+
 @router.get("/api/v3/release")
 async def interactive_search(episodeId: int = Query(...), api_key: str = Depends(get_medusa_key)):
     try:
@@ -436,24 +458,15 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
             raise HTTPException(status_code=404, detail="Episode not found")
             
         # 2. Trigger manual search in Medusa
-        # Use MedusaClient to resolve the correct series details, including the proper slug.
         series_data = await client.get_series_by_id(extract_clean_integer_id(target_series))
-        if not series_data:
-            logger.error(f"Failed to fetch details for series ID: {extract_clean_integer_id(target_series)}")
-            raise HTTPException(status_code=500, detail="Failed to fetch series details for search")
-
-        # The API provides a slug directly in the 'id' field of the response
         slug = series_data.get("id", {}).get("slug")
         if not slug:
-            # Fallback if slug is missing
             indexer = series_data.get("default_indexer") or series_data.get("indexer") or "tvdb"
             val = series_data.get("ids", {}).get(indexer)
             slug = f"{indexer}{val}" if val else str(extract_clean_integer_id(target_series))
             
         season = target_ep.get("season")
         episode = target_ep.get("episode")
-        
-        logger.debug(f"DEBUG: Triggering manual search for slug: {slug}, season: {season}, episode: {episode}")
         
         payload = {
             "showSlug": slug,
@@ -463,17 +476,11 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
         
         res = await async_client.put("/api/v2/search/manual", json=payload, headers=medusa_headers(api_key))
         if res.status_code != 202:
-            logger.error(f"Manual search trigger failed: {res.status_code} {res.text}")
             raise HTTPException(status_code=500, detail=f"Failed to trigger manual search: {res.text}")
             
         # 3. Poll for results from all enabled providers
         providers_res = await async_client.get("/api/v2/providers", headers=medusa_headers(api_key))
-        enabled_providers = []
-        if providers_res.status_code == 200:
-            providers = providers_res.json()
-            enabled_providers = [p.get("id") for p in providers if p.get("enabled", True)]
-        
-        logger.debug(f"DEBUG: Providers to poll: {enabled_providers}")
+        enabled_providers = [p.get("id") for p in providers_res.json()] if providers_res.status_code == 200 else []
         
         results = []
         for _ in range(5):
@@ -482,15 +489,7 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
             
             current_poll_results = []
             for provider_id in enabled_providers:
-                search_url = f"/api/v2/providers/{provider_id}/results"
-                params = {
-                    "limit": 100,
-                    "showslug": slug,
-                    "season": season,
-                    "episode": episode,
-                    "page": 1
-                }
-                res = await async_client.get(search_url, params=params, headers=medusa_headers(api_key))
+                res = await async_client.get(f"/api/v2/providers/{provider_id}/results", params={"limit": 100, "showslug": slug, "season": season, "episode": episode, "page": 1}, headers=medusa_headers(api_key))
                 if res.status_code == 200:
                     current_poll_results.extend(res.json())
             
@@ -499,7 +498,7 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
                 break
         
         if results:
-            # Map to Sonarr release format
+            from datetime import datetime
             return [
                 {
                     "id": i + 1,
@@ -510,12 +509,12 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
                     "seriesId": r.get("seriesId"),
                     "episodeIds": [episodeId],
                     "quality": {
-                        "quality": {"id": 1, "name": "Unknown", "source": "unknown", "resolution": 0},
+                        "quality": {"id": 1, "name": str(r.get("quality", "Unknown")), "source": "unknown", "resolution": 0},
                         "revision": {"version": 1, "real": 0, "isRepack": False}
                     },
                     "size": r.get("size", 0),
-                    "seeders": r.get("seeders"),
-                    "leechers": r.get("leechers"),
+                    "seeders": r.get("seeders", 0),
+                    "leechers": r.get("leechers", 0),
                     "publishDate": r.get("pubdate"),
                     "downloadUrl": r.get("url"),
                     "infoUrl": r.get("url"),
@@ -523,22 +522,13 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
                     "languages": [{"id": 1, "name": "English"}],
                     "seasonNumber": r.get("season"),
                     "episodeNumbers": r.get("episodes", []),
-                    "mappedEpisodeInfo": [
-                        {
-                            "id": episodeId,
-                            "seasonNumber": r.get("season"),
-                            "episodeNumber": ep,
-                            "title": r.get("release")
-                        }
-                        for ep in r.get("episodes", [])
-                    ],
+                    "mappedEpisodeInfo": [{"id": episodeId, "seasonNumber": r.get("season"), "episodeNumber": ep, "title": r.get("release")} for ep in r.get("episodes", [])],
                     "approved": True,
                     "downloadAllowed": True
                 }
                 for i, r in enumerate(results)
             ]
         
-        logger.warning(f"DEBUG: Search poll timed out for slug: {slug}")
         return []
     except Exception as e:
         logger.exception(f"Interactive search exception: {str(e)}")
