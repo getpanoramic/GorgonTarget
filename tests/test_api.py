@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 from gorgontarget.utils import extract_clean_year, extract_clean_integer_id
 
 @pytest.mark.asyncio
@@ -15,14 +15,36 @@ async def test_missing_auth_rejected(async_app_client):
     assert "Missing API Key" in response.json()["detail"]
 
 @pytest.mark.asyncio
-async def test_get_system_tasks(async_app_client):
-    response = await async_app_client.get("/api/v3/system/task", headers={"X-Api-Key": "testkey"})
+@patch("gorgontarget.routes.system.MedusaClient")
+async def test_get_diskspace(mock_medusa_client_class, async_app_client):
+    # Setup mock
+    mock_client = AsyncMock()
+    mock_medusa_client_class.return_value = mock_client
+    mock_client.get_system_config.return_value = {
+        "diskSpace": {
+            "tvDownloadDir": {
+                "type": "TV Download Directory",
+                "location": "/media/hdd2/sab",
+                "freeSpace": "547.56 GB"
+            },
+            "rootDir": [
+                {
+                    "type": "Media Root Directory",
+                    "location": "/media/hdd2/Shows",
+                    "freeSpace": "547.56 GB"
+                }
+            ]
+        }
+    }
+    
+    response = await async_app_client.get("/api/v3/diskspace", headers={"X-Api-Key": "testkey"})
     
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-    assert len(data) > 0
-    assert data[0]["name"] == "CheckForUpdates"
+    assert len(data) == 2
+    assert data[0]["path"] == "/media/hdd2/sab"
+    assert data[1]["path"] == "/media/hdd2/Shows"
 
 @pytest.mark.asyncio
 @patch("gorgontarget.routes.system.core_system_status")

@@ -41,11 +41,19 @@ async def core_system_status(api_key: str):
 
 @router.get("/api/v3/system/task")
 async def get_system_tasks(api_key: str = Depends(get_medusa_key)):
-    # Returning a list of available system tasks
+    client = MedusaClient(api_key)
+    config = await client.get_system_config()
+    schedulers = config.get("system", {}).get("schedulers", [])
+    
     return [
-        {"id": 1, "name": "CheckForUpdates", "taskName": "CheckForUpdates", "interval": "12h", "enabled": True},
-        {"id": 2, "name": "RefreshSeries", "taskName": "RefreshSeries", "interval": "12h", "enabled": True},
-        {"id": 3, "name": "RescanSeries", "taskName": "RescanSeries", "interval": "12h", "enabled": True},
+        {
+            "id": i + 1,
+            "name": s.get("name"),
+            "taskName": s.get("key"),
+            "interval": f"{s.get('cycleTime', 0)}s",
+            "enabled": s.get("isEnabled", False)
+        }
+        for i, s in enumerate(schedulers)
     ]
 
 @router.get("/api/system/status")
@@ -63,18 +71,35 @@ async def get_health_proxy(api_key: str = Depends(get_medusa_key)):
 
 @router.get("/api/v3/diskspace")
 async def get_diskspace(api_key: str = Depends(get_medusa_key)):
-    # Using your provided config endpoint
-    res = await async_client.get("/api/v2/config", headers=medusa_headers(api_key))
-    data = res.json() if res.status_code == 200 else {}
+    client = MedusaClient(api_key)
+    config = await client.get_system_config()
+    disk_space = config.get("diskSpace", {})
     
-    # Translate Medusa 'diskSpace' to Sonarr 'DiskSpace'
-    from ..utils import parse_medusa_size
-    return [{
-        "path": d.get("location"),
-        "label": d.get("type"),
-        "freeSpace": parse_medusa_size(d.get("freeSpace", "0 GB")),
-        "totalSpace": 0
-    } for d in data.get("diskSpace", {}).get("rootDir", [])]
+    output = []
+    
+    # Map TV Download Directory
+    tv_download = disk_space.get("tvDownloadDir", {})
+    if tv_download:
+        output.append({
+            "id": 1,
+            "path": tv_download.get("location"),
+            "label": tv_download.get("type"),
+            "freeSpace": parse_medusa_size(tv_download.get("freeSpace", "0 GB")),
+            "totalSpace": 0 # Not available in Medusa config
+        })
+        
+    # Map Root Directories
+    root_dirs = disk_space.get("rootDir", [])
+    for i, d in enumerate(root_dirs):
+        output.append({
+            "id": i + 2,
+            "path": d.get("location"),
+            "label": d.get("type"),
+            "freeSpace": parse_medusa_size(d.get("freeSpace", "0 GB")),
+            "totalSpace": 0 # Not available in Medusa config
+        })
+            
+    return output
 
 @router.get("/api/v3/downloadclient")
 async def get_download_clients(api_key: str = Depends(get_medusa_key)):
