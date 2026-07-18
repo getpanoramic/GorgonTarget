@@ -200,7 +200,7 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
             show_name = show.get("name", "Unknown Show")
             
             for ep in show.get("episodes", []):
-                ep_id = int(extract_id_from_str(f"{series_id}{ep.get('season', 0)}{ep.get('episode', 0)}") or 0)
+                ep_id = int(ep.get("id", 0) or 0)
                 
                 # Strict NZB360 schema mapping with complete nested structures
                 record = {
