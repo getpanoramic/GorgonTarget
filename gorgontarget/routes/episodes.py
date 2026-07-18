@@ -329,6 +329,12 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
         data = res.json()
         logger.debug(f"DEBUG: FORENSIC Medusa guessit response: {data}")
         parsed = data.get("parse", {})
+        show_data = data.get("show")
+        
+        series_obj = None
+        if show_data:
+            # Use the translator to generate a Sonarr-compliant series object
+            series_obj = MedusaTranslator.to_sonarr_series(show_data, api_key=api_key).dict()
         
         # Sonarr-compliant response structure
         # NOTE: This mapping fills required fields with defaults to satisfy the strict schema
@@ -343,7 +349,7 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
                 "episodeNumbers": parsed.get("episode", []),
                 "releaseType": "episode" if parsed.get("type") == "episode" else "unknown"
             },
-            "series": None, # Should be populated if show is matched
+            "series": series_obj,
             "episodes": []
         }
     except Exception as e:
