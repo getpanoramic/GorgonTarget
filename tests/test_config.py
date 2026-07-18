@@ -14,8 +14,11 @@ async def test_get_config_host(mock_medusa_client_class, async_app_client):
                 "port": 8081,
                 "httpsEnable": False,
                 "username": "user",
-                "password": "password"
-            }
+                "password": "password",
+                "apiKey": "testkey"
+            },
+            "launchBrowser": True,
+            "autoUpdate": True
         }
     }
     
@@ -26,9 +29,10 @@ async def test_get_config_host(mock_medusa_client_class, async_app_client):
     assert response.status_code == 200
     data = response.json()
     assert data["port"] == 8081
-    assert data["ssl"] is False
+    assert data["enableSsl"] is False
     assert data["username"] == "user"
-    assert data["password"] == "password"
+    assert data["apiKey"] == "testkey"
+    assert data["launchBrowser"] is True
 
 @pytest.mark.asyncio
 @patch("gorgontarget.routes.config.MedusaClient")

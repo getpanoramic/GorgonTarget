@@ -11,12 +11,46 @@ async def get_medusa_client(api_key: str = Depends(get_medusa_key)):
 async def get_config_host(client: MedusaClient = Depends(get_medusa_client)):
     config = await client.get_system_config()
     web_interface = config.get("main", {}).get("webInterface", {})
+    # Map Medusa config to the new schema
     return {
         "id": 1,
+        "bindAddress": web_interface.get("host"),
         "port": web_interface.get("port"),
-        "ssl": web_interface.get("httpsEnable"),
+        "sslPort": web_interface.get("port") if web_interface.get("httpsEnable") else 0,
+        "enableSsl": web_interface.get("httpsEnable", False),
+        "launchBrowser": config.get("main", {}).get("launchBrowser", False),
+        "authenticationMethod": "basic" if web_interface.get("username") else "none",
+        "authenticationRequired": "enabled" if web_interface.get("username") else "disabled",
+        "analyticsEnabled": True,
         "username": web_interface.get("username"),
-        "password": web_interface.get("password")
+        "password": web_interface.get("password"),
+        "passwordConfirmation": web_interface.get("password"),
+        "logLevel": "info",
+        "logSizeLimit": 20,
+        "consoleLogLevel": "info",
+        "branch": "master",
+        "apiKey": web_interface.get("apiKey"),
+        "sslCertPath": web_interface.get("httpsCert"),
+        "sslCertPassword": web_interface.get("httpsKey"),
+        "urlBase": config.get("main", {}).get("webRoot"),
+        "instanceName": "GorgonTarget",
+        "applicationUrl": None,
+        "updateAutomatically": config.get("main", {}).get("autoUpdate", False),
+        "updateMechanism": "builtIn",
+        "updateScriptPath": None,
+        "proxyEnabled": bool(config.get("main", {}).get("proxySetting")),
+        "proxyType": "http",
+        "proxyHostname": None,
+        "proxyPort": 0,
+        "proxyUsername": None,
+        "proxyPassword": None,
+        "proxyBypassFilter": None,
+        "proxyBypassLocalAddresses": True,
+        "certificateValidation": "enabled",
+        "backupFolder": None,
+        "backupInterval": 0,
+        "backupRetention": 0,
+        "trustCgnatIpAddresses": True
     }
 
 @router.get("/api/v3/config/indexer")
