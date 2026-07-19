@@ -340,7 +340,10 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
         data = res.json()
         logger.debug(f"DEBUG: FORENSIC Medusa guessit response: {data}")
         parsed = data.get("parse", {})
-        quality_str = parsed.get("screen_size", "unknown")
+        show_info = data.get("show", {})
+        
+        quality_str = parsed.get("quality") or parsed.get("screen_size", "unknown")
+        year = parsed.get("year") or show_info.get("year", {}).get("start") or 0
         
         # Build base structure based on the provided comprehensive schema
         response = {
@@ -352,7 +355,7 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
                 "seriesTitleInfo": {
                     "title": parsed.get("title"), 
                     "titleWithoutYear": parsed.get("title"),
-                    "year": parsed.get("year", 0),
+                    "year": year,
                     "allTitles": [parsed.get("title")] if parsed.get("title") else []
                 },
                 "quality": {
@@ -364,15 +367,15 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
                     },
                     "revision": {
                         "version": 1, 
-                        "real": "REAL" in title.upper(), 
-                        "isRepack": "REPACK" in title.upper()
+                        "real": "REAL" in title.upper() or parsed.get("proper_tag") == "REAL", 
+                        "isRepack": "REPACK" in title.upper() or parsed.get("proper_tag") == "REPACK"
                     }
                 },
                 "seasonNumber": parsed.get("season", 1),
-                "episodeNumbers": [parsed.get("episode")] if parsed.get("episode") is not None else [],
+                "episodeNumbers": parsed.get("episode") if isinstance(parsed.get("episode"), list) else ([parsed.get("episode")] if parsed.get("episode") is not None else []),
                 "absoluteEpisodeNumbers": [],
                 "specialAbsoluteEpisodeNumbers": [],
-                "languages": [{"id": 1, "name": parsed.get("language", "English")}],
+                "languages": [{"id": 1, "name": show_info.get("language", "English")}],
                 "fullSeason": parsed.get("season") is not None and parsed.get("episode") is None,
                 "isPartialSeason": False,
                 "isMultiSeason": False,
@@ -384,14 +387,14 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
             },
             "series": {
                 "id": 1,
-                "title": parsed.get("title"),
+                "title": show_info.get("title", parsed.get("title")),
                 "alternateTitles": [],
-                "status": "continuing",
-                "year": parsed.get("year", 0),
+                "status": show_info.get("status", "continuing"),
+                "year": year,
                 "images": [],
-                "originalLanguage": {"id": 1, "name": "English"},
+                "originalLanguage": {"id": 1, "name": show_info.get("language", "English")},
                 "seasons": [],
-                "genres": [],
+                "genres": show_info.get("genres", []),
                 "tags": [],
                 "addOptions": {
                     "ignoreEpisodesWithFiles": True,
@@ -400,7 +403,7 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
                     "searchForMissingEpisodes": True,
                     "searchForCutoffUnmetEpisodes": True
                 },
-                "ratings": {"votes": 0, "value": 0},
+                "ratings": {"votes": show_info.get("rating", {}).get("imdb", {}).get("votes", 0), "value": float(show_info.get("rating", {}).get("imdb", {}).get("rating", 0))},
                 "statistics": {
                     "seasonCount": 0,
                     "episodeFileCount": 0,
@@ -412,7 +415,7 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
                 }
             },
             "episodes": [],
-            "languages": [{"id": 1, "name": parsed.get("language", "English")}],
+            "languages": [{"id": 1, "name": show_info.get("language", "English")}],
             "customFormats": [],
             "customFormatScore": 0
         }
