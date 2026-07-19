@@ -99,7 +99,7 @@ async def get_single_episode(episode_id: int, includeEpisodeFile: bool = Query(F
                 return compliant_ep
             else:
                 # Trace logging to debug ID mismatch
-                logger.trace(f"Skipping episode ID match: requested={episode_id}, found={translated.id} (series={series_id})")
+                logger.debug(f"Skipping episode ID match: requested={episode_id}, found={translated.id} (series={series_id})")
     
     logger.debug(f"get_single_episode: Episode {episode_id} not found.")
     raise HTTPException(status_code=404, detail="Episode not found")
