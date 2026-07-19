@@ -372,11 +372,13 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
                         "isRepack": "REPACK" in title.upper() or parsed.get("proper_tag") == "REPACK"
                     }
                 },
+                "edition": parsed.get("proper_tag") or "",
                 "seasonNumber": parsed.get("season", 1),
                 "episodeNumbers": parsed.get("episode") if isinstance(parsed.get("episode"), list) else ([parsed.get("episode")] if parsed.get("episode") is not None else []),
                 "absoluteEpisodeNumbers": [],
                 "specialAbsoluteEpisodeNumbers": [],
                 "languages": [{"id": 1, "name": show_info.get("language", "English")}],
+                "language": {"id": 1, "name": show_info.get("language", "English")},
                 "fullSeason": parsed.get("season") is not None and parsed.get("episode") is None,
                 "isPartialSeason": False,
                 "isMultiSeason": False,

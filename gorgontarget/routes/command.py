@@ -188,7 +188,17 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                 if not series_id and episode_ids:
                     series_list = await client.get_all_series()
                     for s in series_list:
-                        s_id = s.get("externals", {}).get("tvdb") or s.get("id", {}).get("tvmaze")
+                        # Safely extract integer ID
+                        raw_id = s.get("id")
+                        s_id = 0
+                        if isinstance(raw_id, dict):
+                            s_id = raw_id.get("tvdb") or raw_id.get("tvmaze") or 0
+                        else:
+                            try:
+                                s_id = int(raw_id)
+                            except (ValueError, TypeError):
+                                s_id = 0
+                        
                         if not s_id: continue
                         episodes = await client.get_episodes(s_id)
                         for ep in episodes:
