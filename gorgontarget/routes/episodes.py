@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from typing import List, Optional
 from ..utils import get_medusa_key, logger, extract_clean_integer_id, parse_medusa_size, async_client, medusa_headers, build_sonarr_images, extract_id_from_str
@@ -19,9 +20,13 @@ async def get_episodes(
     if episodeIds:
         shows = await client.get_all_series()
         all_translated_episodes = []
-        for show in shows:
-            s_id = extract_clean_integer_id(show)
-            medusa_episodes = await client.get_episodes(s_id)
+        
+        # Concurrent fetching of episodes for all shows
+        series_ids = [extract_clean_integer_id(show) for show in shows]
+        all_episodes_data = await asyncio.gather(*[client.get_episodes(s_id) for s_id in series_ids])
+        
+        for i, medusa_episodes in enumerate(all_episodes_data):
+            s_id = series_ids[i]
             for ep in medusa_episodes:
                 translated = MedusaTranslator.to_sonarr_episode(ep, s_id)
                 if translated.id in episodeIds:
@@ -50,10 +55,13 @@ async def get_single_episode(episode_id: int, includeEpisodeFile: bool = Query(F
     logger.debug(f"get_single_episode requested for ID: {episode_id}")
     client = MedusaClient(api_key)
     shows = await client.get_all_series()
+    series_ids = [extract_clean_integer_id(show) for show in shows]
     
-    for show in shows:
-        series_id = extract_clean_integer_id(show)
-        episodes = await client.get_episodes(series_id)
+    # Concurrent fetching of episodes for all shows
+    all_episodes_data = await asyncio.gather(*[client.get_episodes(s_id) for s_id in series_ids])
+    
+    for i, episodes in enumerate(all_episodes_data):
+        series_id = series_ids[i]
         for ep in episodes:
             translated = MedusaTranslator.to_sonarr_episode(ep, series_id)
             if translated.id == episode_id:
