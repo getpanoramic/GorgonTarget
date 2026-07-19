@@ -416,19 +416,36 @@ async def download_release(release: dict, api_key: str = Depends(get_medusa_key)
     # The UI payload is often nested: {'release': {...}}
     data = release.get("release", release)
     
-    provider = data.get("indexer") 
+    # Extract indexerId/guid. UI uses indexerId, we need provider name for pickManualSearch
+    indexer_id = data.get("indexerId")
     identifier = data.get("guid") 
     
     logger.debug(f"DEBUG: download_release data: {data}")
 
+    # Resolve provider name from indexerId
+    provider = None
+    if indexer_id is not None:
+        providers_res = await async_client.get("/api/v2/providers", headers=medusa_headers(api_key))
+        if providers_res.status_code == 200:
+            providers = providers_res.json()
+            for p in providers:
+                if str(p.get("id")) == str(indexer_id):
+                    provider = p.get("id")
+                    break
+    
+    # Fallback
+    if not provider:
+        provider = data.get("indexer") 
+    
     if not provider or not identifier:
         logger.error(f"Missing provider or identifier in: {data}")
         raise HTTPException(status_code=400, detail=f"Missing provider or identifier. Data keys: {data.keys()}")
         
+    # Triggering the POST request to Medusa (as specified by user, it's POST)
     params = {"provider": provider, "identifier": identifier}
     logger.debug(f"DEBUG: Triggering download for provider: {provider}, identifier: {identifier}")
     
-    res = await async_client.get("/home/pickManualSearch", params=params, headers=medusa_headers(api_key))
+    res = await async_client.post("/home/pickManualSearch", params=params, headers=medusa_headers(api_key))
     
     if res.status_code != 200:
         logger.error(f"Download trigger failed: {res.status_code} {res.text}")
