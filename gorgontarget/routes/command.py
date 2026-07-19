@@ -60,26 +60,35 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
     episode_ids = command.get("episodeIds") or (command["body"].get("episodeIds") if "body" in command and isinstance(command["body"], dict) else [])
     
     if not series_id and episode_ids:
-        # Simplistic resolution: iterate over all series episodes to find the series ID
+        # Optimization: Try to use cached maps to resolve series_id from episode_ids
         from ..client import MedusaClient
+        from ..cache import series_episodes_cache
         client = MedusaClient(api_key)
         series_list = await client.get_all_series()
+        
+        # Map all episode IDs to series IDs once to avoid nested loops
+        # This is a bit intensive, but only runs if series_id is missing
         for s in series_list:
-            # DEBUG: Inspect the series object structure
-            logger.debug(f"DEBUG: Checking series object: {s}")
-            s_id = extract_clean_integer_id(s)
-            logger.debug(f"DEBUG: Extracted s_id: {s_id}")
+            raw_id = s.get("id")
+            s_id = 0
+            if isinstance(raw_id, dict):
+                s_id = raw_id.get("tvdb") or raw_id.get("tvmaze") or 0
+            else:
+                try: s_id = int(raw_id)
+                except (ValueError, TypeError): s_id = 0
+            
+            if not s_id: continue
+            
+            # Use cached episodes if available
             episodes = await client.get_episodes(s_id)
+            
             for ep in episodes:
-                # Need to match the same ID generation used in episodes.py
                 ep_id = int(extract_id_from_str(f"{s_id}{ep.get('season', 0)}{ep.get('episode', 0)}") or 0)
-                logger.debug(f"DEBUG: Checking ep_id: {ep_id} against input: {episode_ids}")
                 if ep_id in episode_ids:
                     series_id = s_id
                     break
-            if series_id:
-                break
-        logger.debug(f"DEBUG: Resolved series_id from episodeIds: {series_id}")
+            if series_id: break
+        logger.debug(f"DEBUG: Resolved series_id: {series_id}")
     
     logger.debug(f"DEBUG: Extracted name: {name}, series_id: {series_id}")
         
@@ -188,11 +197,17 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                 if not series_id and episode_ids:
                     series_list = await client.get_all_series()
                     for s in series_list:
-                        # Safely extract integer ID
+                        # Safely extract integer ID by trying any numeric value
                         raw_id = s.get("id")
                         s_id = 0
                         if isinstance(raw_id, dict):
-                            s_id = raw_id.get("tvdb") or raw_id.get("tvmaze") or 0
+                            # Try any numeric value in the dictionary
+                            for val in raw_id.values():
+                                try:
+                                    s_id = int(val)
+                                    if s_id: break
+                                except (ValueError, TypeError):
+                                    continue
                         else:
                             try:
                                 s_id = int(raw_id)
