@@ -413,15 +413,18 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
 
 @router.post("/api/v3/release")
 async def download_release(release: dict, api_key: str = Depends(get_medusa_key)):
-    # Trigger download in Medusa via pickManualSearch
-    # Payload from result: {"provider": "...", "identifier": "..."}
-    provider = release.get("indexer") # 'provider' in Medusa results
-    identifier = release.get("guid") # 'identifier' in Medusa results
+    # The UI payload is often nested: {'release': {...}}
+    data = release.get("release", release)
     
+    provider = data.get("indexer") 
+    identifier = data.get("guid") 
+    
+    logger.debug(f"DEBUG: download_release data: {data}")
+
     if not provider or not identifier:
-        raise HTTPException(status_code=400, detail="Missing provider or identifier")
+        logger.error(f"Missing provider or identifier in: {data}")
+        raise HTTPException(status_code=400, detail=f"Missing provider or identifier. Data keys: {data.keys()}")
         
-    # Triggering the GET request to Medusa
     params = {"provider": provider, "identifier": identifier}
     logger.debug(f"DEBUG: Triggering download for provider: {provider}, identifier: {identifier}")
     
@@ -436,7 +439,7 @@ async def download_release(release: dict, api_key: str = Depends(get_medusa_key)
 @router.get("/api/v3/release")
 async def interactive_search(episodeId: int = Query(...), api_key: str = Depends(get_medusa_key)):
     try:
-        # 1. Fetch episode details to get series/season/episode info
+        # 1. Fetch episode details
         client = MedusaClient(api_key)
         shows = await client.get_all_series()
         
@@ -459,12 +462,8 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
             
         # 2. Trigger manual search in Medusa
         series_data = await client.get_series_by_id(extract_clean_integer_id(target_series))
-        slug = series_data.get("id", {}).get("slug")
-        if not slug:
-            indexer = series_data.get("default_indexer") or series_data.get("indexer") or "tvdb"
-            val = series_data.get("ids", {}).get(indexer)
-            slug = f"{indexer}{val}" if val else str(extract_clean_integer_id(target_series))
-            
+        slug = series_data.get("id", {}).get("slug") or str(extract_clean_integer_id(target_series))
+        
         season = target_ep.get("season")
         episode = target_ep.get("episode")
         
@@ -499,35 +498,55 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
         
         if results:
             from datetime import datetime
-            return [
-                {
+            
+            def map_release(i, r):
+                pub_date = r.get("pubdate")
+                age_days = 0
+                if pub_date:
+                    try:
+                        # Handle potential timezone offsets by stripping them for naive parsing
+                        pub_dt = datetime.fromisoformat(pub_date.replace("Z", "+00:00"))
+                        age_days = (datetime.now(pub_dt.tzinfo) - pub_dt).days
+                    except: pass
+                
+                release_str = r.get("release", "")
+                is_repack = "REPACK" in release_str.upper()
+                is_real = "REAL" in release_str.upper()
+                
+                return {
                     "id": i + 1,
                     "guid": r.get("identifier"),
-                    "title": r.get("release"),
+                    "title": release_str,
                     "indexerId": i,
                     "indexer": r.get("provider", {}).get("name"),
                     "seriesId": r.get("seriesId"),
                     "episodeIds": [episodeId],
                     "quality": {
-                        "quality": {"id": 1, "name": str(r.get("quality", "Unknown")), "source": "unknown", "resolution": 0},
-                        "revision": {"version": 1, "real": 0, "isRepack": False}
+                        "quality": {
+                            "id": 1, 
+                            "name": str(r.get("quality", "HDTV")), 
+                            "source": "unknown", 
+                            "resolution": 0
+                        },
+                        "revision": {"version": 1, "real": 1 if is_real else 0, "isRepack": is_repack}
                     },
+                    "age": age_days,
                     "size": r.get("size", 0),
                     "seeders": r.get("seeders", 0),
                     "leechers": r.get("leechers", 0),
-                    "publishDate": r.get("pubdate"),
+                    "publishDate": pub_date,
                     "downloadUrl": r.get("url"),
                     "infoUrl": r.get("url"),
                     "protocol": "torrent",
                     "languages": [{"id": 1, "name": "English"}],
                     "seasonNumber": r.get("season"),
                     "episodeNumbers": r.get("episodes", []),
-                    "mappedEpisodeInfo": [{"id": episodeId, "seasonNumber": r.get("season"), "episodeNumber": ep, "title": r.get("release")} for ep in r.get("episodes", [])],
+                    "mappedEpisodeInfo": [{"id": episodeId, "seasonNumber": r.get("season"), "episodeNumber": ep, "title": release_str} for ep in r.get("episodes", [])],
                     "approved": True,
                     "downloadAllowed": True
                 }
-                for i, r in enumerate(results)
-            ]
+
+            return [map_release(i, r) for i, r in enumerate(results)]
         
         return []
     except Exception as e:
