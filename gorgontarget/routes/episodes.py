@@ -212,8 +212,10 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
             
             for ep in show.get("episodes", []):
                 logger.debug(f"DEBUG: Processing raw episode: {ep}")
-                # Consistent ID generation: use the same logic as in routes/episodes.py / command.py
-                ep_id = int(extract_id_from_str(f"{series_id}{ep.get('season', 0)}{ep.get('episode', 0)}") or 0)
+                # Generate unique ID based on show slug, season, and episode
+                ep_key = f"{show.get('slug', '0')}-{ep.get('season', 0)}-{ep.get('episode', 0)}"
+                ep_id = abs(hash(ep_key)) % 100000000 # Use a large enough range
+                if ep_id == 0: ep_id = 1 # Ensure non-zero
                 
                 # Strict NZB360 schema mapping with complete nested structures
                 record = {
