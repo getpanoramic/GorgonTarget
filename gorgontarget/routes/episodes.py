@@ -344,6 +344,7 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
         
         quality_str = parsed.get("quality") or parsed.get("screen_size", "unknown")
         year = parsed.get("year") or show_info.get("year", {}).get("start") or 0
+        logger.debug(f"DEBUG: Parsed values: quality={quality_str}, year={year}, title={parsed.get('title')}, language={show_info.get('language')}, proper={parsed.get('proper_tag')}")
         
         # Build base structure based on the provided comprehensive schema
         response = {
@@ -520,29 +521,38 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
             "options": {},
             "episodes": [f"s{season:02d}e{episode:02d}"]
         }
+        logger.debug(f"DEBUG: Triggering manual search for slug: {slug}, season: {season}, episode: {episode}")
         
         res = await async_client.put("/api/v2/search/manual", json=payload, headers=medusa_headers(api_key))
         if res.status_code != 202:
+            logger.error(f"Failed to trigger manual search: {res.status_code} {res.text}")
             raise HTTPException(status_code=500, detail=f"Failed to trigger manual search: {res.text}")
             
         # 3. Poll for results from all enabled providers
         providers_res = await async_client.get("/api/v2/providers", headers=medusa_headers(api_key))
         enabled_providers = [p.get("id") for p in providers_res.json()] if providers_res.status_code == 200 else []
+        logger.debug(f"DEBUG: Enabled providers: {enabled_providers}")
         
         results = []
-        for _ in range(5):
+        for poll_attempt in range(5):
             import asyncio
             await asyncio.sleep(3)
+            logger.debug(f"DEBUG: Polling attempt {poll_attempt + 1}")
             
             current_poll_results = []
             for provider_id in enabled_providers:
                 res = await async_client.get(f"/api/v2/providers/{provider_id}/results", params={"limit": 100, "showslug": slug, "season": season, "episode": episode, "page": 1}, headers=medusa_headers(api_key))
                 if res.status_code == 200:
-                    current_poll_results.extend(res.json())
+                    provider_results = res.json()
+                    logger.debug(f"DEBUG: Provider {provider_id} returned {len(provider_results)} results")
+                    current_poll_results.extend(provider_results)
             
             if current_poll_results:
                 results = current_poll_results
+                logger.debug(f"DEBUG: Search results found on attempt {poll_attempt + 1}")
                 break
+        
+        logger.debug(f"DEBUG: Total results found: {len(results)}")
         
         if results:
             from datetime import datetime
