@@ -413,12 +413,10 @@ async def parse_title(title: str = Query(...), api_key: str = Depends(get_medusa
 
 @router.post("/api/v3/release")
 async def download_release(release: dict, api_key: str = Depends(get_medusa_key)):
-    # The UI payload often comes as {'release': {...}} or just {...}
+    # The UI payload is often nested: {'release': {...}}
     data = release.get("release", release)
     
-    # Extract provider/identifier.
-    # UI sends 'indexerId' and 'guid'.
-    # We need to map 'indexerId' -> provider name, 'guid' -> identifier
+    # Extract indexerId/guid. UI uses indexerId, we need provider name for pickManualSearch
     indexer_id = data.get("indexerId")
     identifier = data.get("guid") 
     
@@ -450,15 +448,16 @@ async def download_release(release: dict, api_key: str = Depends(get_medusa_key)
         provider = data.get("indexer") or str(indexer_id)
     
     if not provider or not identifier:
-        logger.error(f"Missing provider or identifier in: {data}. Resolved provider: {provider}, identifier: {identifier}")
-        raise HTTPException(status_code=400, detail=f"Missing provider or identifier. Got provider: {provider}, identifier: {identifier}")
+        logger.error(f"Missing provider or identifier in: {data}")
+        raise HTTPException(status_code=400, detail=f"Missing provider or identifier. Data keys: {data.keys()}")
         
     # Triggering the GET request to Medusa
     params = {"provider": provider, "identifier": identifier}
     logger.debug(f"DEBUG: Triggering download for provider: {provider}, identifier: {identifier}")
     
-    res = await async_client.get("/home/pickManualSearch", params=params, headers=medusa_headers(api_key))
+    res = await async_client.get("/home/pickManualSearch", params=params, headers=medusa_headers(api_key), follow_redirects=True)
     
+    # 200 is success
     if res.status_code != 200:
         logger.error(f"Download trigger failed: {res.status_code} {res.text}")
         raise HTTPException(status_code=500, detail=f"Failed to trigger download: {res.text}")
@@ -468,6 +467,12 @@ async def download_release(release: dict, api_key: str = Depends(get_medusa_key)
 @router.get("/api/v3/release")
 async def interactive_search(episodeId: int = Query(...), api_key: str = Depends(get_medusa_key)):
     try:
+        from ..cache import search_cache
+        cached_results = await search_cache.get(f"search_{episodeId}")
+        if cached_results:
+            logger.debug(f"DEBUG: Returning cached results for {episodeId}")
+            return cached_results
+
         # 1. Fetch episode details
         client = MedusaClient(api_key)
         shows = await client.get_all_series()
@@ -575,7 +580,9 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
                     "downloadAllowed": True
                 }
 
-            return [map_release(i, r) for i, r in enumerate(results)]
+            formatted_results = [map_release(i, r) for i, r in enumerate(results)]
+            await search_cache.set(f"search_{episodeId}", formatted_results)
+            return formatted_results
         
         return []
     except Exception as e:
