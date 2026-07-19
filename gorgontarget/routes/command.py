@@ -190,51 +190,87 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                 success = res.status_code == 200
             elif name == "EpisodeSearch":
                 logger.debug("DEBUG: Entering EpisodeSearch block")
-                episode_ids = command.get("episodeIds", [])
-                logger.debug(f"DEBUG: EpisodeSearch triggered for IDs: {episode_ids}, series_id: {series_id}")
+                episode_ids = [eid for eid in command.get("episodeIds", []) if isinstance(eid, int) and eid > 0]
                 
-                # If we don't have a series_id, resolve it
-                if not series_id and episode_ids:
-                    series_list = await client.get_all_series()
-                    for s in series_list:
-                        # Safely extract integer ID by trying any numeric value
-                        raw_id = s.get("id")
-                        s_id = 0
-                        if isinstance(raw_id, dict):
-                            # Try any numeric value in the dictionary
-                            for val in raw_id.values():
+                if not episode_ids:
+                    logger.warning(f"EpisodeSearch triggered with no valid episode IDs: {command.get('episodeIds')}")
+                    success = False
+                else:
+                    logger.debug(f"DEBUG: EpisodeSearch triggered for valid IDs: {episode_ids}, series_id: {series_id}")
+                    
+                    # If we don't have a series_id, resolve it
+                    if not series_id:
+                        series_list = await client.get_all_series()
+                        for s in series_list:
+                            # Safely extract integer ID by trying any numeric value
+                            raw_id = s.get("id")
+                            s_id = 0
+                            if isinstance(raw_id, dict):
+                                # Try any numeric value in the dictionary
+                                for val in raw_id.values():
+                                    try:
+                                        s_id = int(val)
+                                        if s_id: break
+                                    except (ValueError, TypeError):
+                                        continue
+                            else:
                                 try:
-                                    s_id = int(val)
-                                    if s_id: break
+                                    s_id = int(raw_id)
+                                except (ValueError, TypeError):
+                                    s_id = 0
+                            
+                            if not s_id: continue
+                            episodes = await client.get_episodes(s_id)
+                            
+                            # Defensive check that episodes is a list
+                            if not isinstance(episodes, list):
+                                logger.warning(f"Unexpected episodes format for series {s_id}: {type(episodes)}")
+                                continue
+                            
+                            for ep in episodes:
+                                try:
+                                    ep_id_raw = ep.get("id")
+                                    if ep_id_raw is None: continue
+                                    ep_id = int(ep_id_raw)
+                                    if ep_id in episode_ids:
+                                        series_id = s_id
+                                        break
                                 except (ValueError, TypeError):
                                     continue
-                        else:
-                            try:
-                                s_id = int(raw_id)
-                            except (ValueError, TypeError):
-                                s_id = 0
-                        
-                        if not s_id: continue
-                        episodes = await client.get_episodes(s_id)
-                        for ep in episodes:
-                            if int(ep.get("id") or 0) in episode_ids:
-                                series_id = s_id
-                                break
-                        if series_id: break
+                            if series_id: break
 
-                if series_id:
-                    slug = await series_map_cache.get(f"map_{series_id}") or str(series_id)
-                    episodes = await client.get_episodes(series_id)
-                    ep_format = [f"S{ep.get('season'):02d}E{ep.get('episode'):02d}" for ep in episodes if int(ep.get("id") or 0) in episode_ids]
-                    
-                    logger.debug(f"DEBUG: Episodes to search (format SXXEXX): {ep_format}")
-                    
-                    if ep_format:
-                        payload = {"showSlug": slug, "episodes": ep_format, "options": {}}
-                        logger.debug(f"DEBUG: Sending backlog search payload: {payload}")
-                        res = await async_client.put("/api/v2/search/backlog", json=payload, headers=medusa_headers(api_key))
-                        success = res.status_code == 200
-                        logger.debug(f"DEBUG: Backlog search request result code: {res.status_code}")
+                    if series_id:
+                        slug = await series_map_cache.get(f"map_{series_id}") or str(series_id)
+                        episodes = await client.get_episodes(series_id)
+                        
+                        # Defensive check that episodes is a list
+                        if not isinstance(episodes, list):
+                            logger.error(f"Failed to get episodes for series {series_id}")
+                            success = False
+                        else:
+                            ep_format = []
+                            for ep in episodes:
+                                try:
+                                    ep_id = int(ep.get("id") or 0)
+                                    if ep_id in episode_ids:
+                                        season = int(ep.get("season", 0))
+                                        episode = int(ep.get("episode", 0))
+                                        ep_format.append(f"S{season:02d}E{episode:02d}")
+                                except (ValueError, TypeError):
+                                    continue
+                            
+                            logger.debug(f"DEBUG: Episodes to search (format SXXEXX): {ep_format}")
+                            
+                            if ep_format:
+                                payload = {"showSlug": slug, "episodes": ep_format, "options": {}}
+                                logger.debug(f"DEBUG: Sending backlog search payload: {payload}")
+                                res = await async_client.put("/api/v2/search/backlog", json=payload, headers=medusa_headers(api_key))
+                                success = res.status_code == 200
+                                logger.debug(f"DEBUG: Backlog search request result code: {res.status_code}")
+                            else:
+                                logger.warning("No valid episodes found to search for.")
+                    else:
+                        logger.warning(f"Could not resolve series_id for episode IDs: {episode_ids}")
                             
         else:
             logger.debug(f"DEBUG: Search skipped because slug was: {slug}")
