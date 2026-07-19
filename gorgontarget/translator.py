@@ -6,11 +6,26 @@ from .settings import settings
 class MedusaTranslator:
     @staticmethod
     def extract_clean_integer_id(show_node: Dict[str, Any]) -> int:
+        # Check if the node itself has an 'id' that is a dict (common in some Medusa responses)
         raw_id = show_node.get("id")
         
+        # If the whole node is the id, handle it (rare, but possible)
+        if isinstance(show_node, dict) and "id" not in show_node and isinstance(show_node.get("id"), dict):
+             raw_id = show_node
+             
         # If it's a dict, try extracting a numeric ID dynamically
         if isinstance(raw_id, dict):
-            # Try to find the first numeric value in the dict
+            # Known priority keys for ID extraction
+            priority_keys = ['tvdb', 'imdb', 'tmdb', 'indexerId', 'id']
+            for key in priority_keys:
+                val = raw_id.get(key)
+                if val is not None:
+                    try:
+                        return int(val)
+                    except (ValueError, TypeError):
+                        continue
+            
+            # Try to find any other numeric value in the dict
             for key, val in raw_id.items():
                 if key != 'slug': # 'slug' is not a numeric id
                     try:
