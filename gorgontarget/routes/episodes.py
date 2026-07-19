@@ -211,6 +211,7 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
             show_name = show.get("name", "Unknown Show")
             
             for ep in show.get("episodes", []):
+                logger.debug(f"DEBUG: Processing raw episode: {ep}")
                 ep_id = int(ep.get("id", 0) or 0)
                 
                 # Strict NZB360 schema mapping with complete nested structures
@@ -266,6 +267,7 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
                     },
                     "images": build_sonarr_images(series_id, api_key=api_key)
                 }
+                logger.debug(f"DEBUG: Mapped record: {record}")
                 records.append(record)
         
         response = {
