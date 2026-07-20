@@ -266,7 +266,7 @@ async def get_log_file(api_key: str = Depends(get_medusa_key)):
 
 @router.get("/api/v3/logs/download")
 async def download_logs(api_key: str = Depends(get_medusa_key)):
-    log_path = "/config/gorgontarget.log" if os.path.exists("/config") else "gorgontarget.log"
+    log_path = "/tmp/gorgontarget.log"
     try:
         with open(log_path, "r") as f:
             log_content = f.read()
