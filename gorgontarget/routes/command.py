@@ -229,10 +229,12 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                             
                             for ep in episodes:
                                 try:
-                                    # Matching the ID generation logic used in episodes.py: f"{show.get('slug', '0')}-{ep.get('season', 0)}-{ep.get('episode', 0)}"
-                                    ep_key = f"{s.get('slug', '0')}-{ep.get('season', 0)}-{ep.get('episode', 0)}"
-                                    ep_id = abs(hash(ep_key)) % 100000000 
-                                    if ep_id == 0: ep_id = 1
+                                    # Use the same deterministic ID generation as in episodes.py
+                                    ep_id = MedusaTranslator.extract_clean_integer_id(ep)
+                                    if ep_id == 0:
+                                        ep_key = f"{s.get('slug', '0')}-{ep.get('season', 0)}-{ep.get('episode', 0)}"
+                                        ep_id = abs(hash(ep_key)) % 100000000
+                                        if ep_id == 0: ep_id = 1
                                     
                                     if ep_id in episode_ids:
                                         series_id = s_id
