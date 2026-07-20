@@ -17,7 +17,9 @@ class MedusaTranslator:
                     try:
                         val = show_node[key]
                         if isinstance(val, dict):
-                             # Sometimes the ID is nested in a dict
+                             # Check for specific keys or any numeric value in the dict
+                             for sub_val in val.values():
+                                 if isinstance(sub_val, int): return sub_val
                              return int(val.get('id') or val.get('value') or 0)
                         return int(val)
                     except (ValueError, TypeError):
