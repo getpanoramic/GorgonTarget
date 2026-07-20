@@ -266,6 +266,25 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                             else:
                                 logger.debug(f"DEBUG: No match in series {s_id}")
 
+                    if not series_id:
+                        logger.debug(f"DEBUG: Episode ID {episode_ids} not in series episodes. Checking backlog fallback.")
+                        backlog_res = await async_client.get("/api/v2/internal/getEpisodeBacklog", params={"period": "all", "status": "all"}, headers=medusa_headers(api_key))
+                        if backlog_res.status_code == 200:
+                            backlog_data = backlog_res.json()
+                            for show in backlog_data:
+                                s_id_backlog = int(extract_id_from_str(show.get("slug", "0")) or 0)
+                                for ep in show.get("episodes", []):
+                                    ep_id = MedusaTranslator.extract_clean_integer_id(ep)
+                                    if ep_id == 0:
+                                        ep_key = f"{show.get('slug', '0')}-{ep.get('season', 0)}-{ep.get('episode', 0)}"
+                                        ep_id = abs(hash(ep_key)) % 100000000
+                                    
+                                    if ep_id in episode_ids:
+                                        logger.debug(f"DEBUG: Found episode match {ep_id} in BACKLOG for series {s_id_backlog}")
+                                        series_id = s_id_backlog
+                                        break
+                                if series_id: break
+
                     if series_id:
                         slug = await series_map_cache.get(f"map_{series_id}") or str(series_id)
                         episodes = await client.get_episodes(series_id)
