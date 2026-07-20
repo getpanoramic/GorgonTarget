@@ -236,13 +236,22 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                                         ep_key = f"{s.get('slug', '0')}-{ep.get('season', 0)}-{ep.get('episode', 0)}"
                                         ep_id = abs(hash(ep_key)) % 100000000
                                         if ep_id == 0: ep_id = 1
+                                        logger.debug(f"DEBUG: Used hash fallback for ep {ep.get('season')}/{ep.get('episode')}: key={ep_key}, id={ep_id}")
                                     
                                     if ep_id in episode_ids:
+                                        logger.debug(f"DEBUG: Found episode match {ep_id} in series {s_id}")
                                         series_id = s_id
                                         break
+                                    else:
+                                        # Log occasionally or if needed
+                                        logger.debug(f"DEBUG: Episode ID {ep_id} (hash_based={ep_id==0}) does not match requested {episode_ids}")
                                 except (ValueError, TypeError):
                                     continue
-                            if series_id: break
+                            if series_id:
+                                logger.debug(f"DEBUG: Series match found: {series_id}")
+                                break
+                            else:
+                                logger.debug(f"DEBUG: No match in series {s_id}")
 
                     if series_id:
                         slug = await series_map_cache.get(f"map_{series_id}") or str(series_id)
