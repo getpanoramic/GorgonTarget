@@ -4,6 +4,7 @@ from typing import List, Optional
 from ..utils import get_medusa_key, logger, extract_clean_integer_id, parse_medusa_size, async_client, medusa_headers, build_sonarr_images, extract_id_from_str
 from ..client import MedusaClient
 from ..translator import MedusaTranslator
+from ..cache import episode_series_map
 
 router = APIRouter()
 
@@ -219,6 +220,9 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
                     ep_key = f"{show.get('slug', '0')}-{ep.get('season', 0)}-{ep.get('episode', 0)}"
                     ep_id = abs(hash(ep_key)) % 100000000
                     if ep_id == 0: ep_id = 1
+                
+                # Populate mapping cache
+                await episode_series_map.set(str(ep_id), series_id)
                 
                 # Strict NZB360 schema mapping with complete nested structures
                 record = {

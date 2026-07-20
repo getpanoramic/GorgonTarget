@@ -6,6 +6,9 @@ from .settings import settings
 class MedusaTranslator:
     @staticmethod
     def extract_clean_integer_id(show_node: Dict[str, Any]) -> int:
+        # Debugging: Log full structure
+        logger.debug(f"DEBUG: Processing node for ID: {show_node}")
+        
         # Prioritize explicit unique identifiers from Medusa
         # Medusa episodes often have a 'tvdb' ID or a unique 'id'
         priority_keys = ['tvdb', 'id', 'indexerId']

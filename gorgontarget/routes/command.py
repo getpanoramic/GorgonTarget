@@ -5,6 +5,7 @@ from datetime import datetime
 import time
 from ..utils import get_medusa_key, medusa_headers, logger, async_client, COMMAND_REGISTRY, extract_clean_integer_id, extract_id_from_str
 from ..translator import MedusaTranslator
+from ..cache import series_map_cache, episode_series_map
 
 router = APIRouter()
 
@@ -240,13 +241,21 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                                     else:
                                         logger.debug(f"DEBUG: Generated ID {ep_id} for raw ep data: {ep.get('season')}/{ep.get('episode')} - {ep.get('title')}")
                                     
+
+                                    # New: Check cache for direct mapping
+                                    cached_series_id = await episode_series_map.get(str(ep_id))
+                                    if cached_series_id:
+                                        logger.debug(f"DEBUG: Found series match {cached_series_id} in cache for ep {ep_id}")
+                                        series_id = int(cached_series_id)
+                                        break
+
                                     if ep_id in episode_ids:
                                         logger.debug(f"DEBUG: Found episode match {ep_id} in series {s_id}")
                                         series_id = s_id
                                         break
                                     else:
-                                        # Log occasionally or if needed
-                                        logger.debug(f"DEBUG: Episode ID {ep_id} does not match requested {episode_ids}")
+                                        logger.debug(f"DEBUG: Episode ID {ep_id} (hash_based={ep_id==0}) does not match requested {episode_ids}")
+
                                 except (ValueError, TypeError):
                                     continue
                             if series_id:

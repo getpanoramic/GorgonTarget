@@ -42,6 +42,7 @@ class AsyncTTLCache:
 series_map_cache = AsyncTTLCache(ttl=3600)
 series_details_cache = AsyncTTLCache(ttl=3600)
 series_episodes_cache = AsyncTTLCache(ttl=3600)
+episode_series_map = AsyncTTLCache(ttl=3600)  # Added cache for episode to series mapping
 capability_cache = AsyncTTLCache(ttl=86400)
 series_list_cache = AsyncTTLCache(ttl=3600)
 search_cache = AsyncTTLCache(ttl=300)
