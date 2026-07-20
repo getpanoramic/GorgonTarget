@@ -5,7 +5,11 @@ from fastapi import Header, HTTPException, status, Query, Request
 from typing import Optional, List, Dict, Any
 from .settings import settings
 import re
+import os
 from datetime import datetime
+
+# Determine log path
+log_path = "/config/gorgontarget.log" if os.path.exists("/config") else "gorgontarget.log"
 
 # Setup logging
 logging.basicConfig(
@@ -13,7 +17,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stderr),
-        logging.FileHandler("/config/gorgontarget.log")
+        logging.FileHandler(log_path)
     ]
 )
 logger = logging.getLogger("GorgonTarget")
