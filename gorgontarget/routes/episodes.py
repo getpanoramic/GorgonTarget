@@ -212,7 +212,8 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
             show_name = show.get("name", "Unknown Show")
             
             for ep in show.get("episodes", []):
-                logger.debug(f"DEBUG: Processing raw episode: {ep}")
+                # Forensic logging: dump raw ep
+                logger.debug(f"DEBUG: FORENSIC RAW EPISODE DATA: {ep}")
                 
                 # Get ID from Medusa, fallback to deterministic hash if 0
                 ep_id = MedusaTranslator.extract_clean_integer_id(ep)
@@ -223,6 +224,7 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
                 
                 # Populate mapping cache
                 await episode_series_map.set(str(ep_id), series_id)
+                logger.debug(f"DEBUG: Populated cache with key={str(ep_id)}, value={series_id}, title={ep.get('title')}")
                 
                 # Strict NZB360 schema mapping with complete nested structures
                 record = {
