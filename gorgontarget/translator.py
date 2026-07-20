@@ -2,6 +2,7 @@ from typing import Dict, Any
 import sys
 from .models import SonarrSeries, SonarrEpisode, SonarrSystemStatus
 from .settings import settings
+from .utils import logger
 
 class MedusaTranslator:
     @staticmethod
