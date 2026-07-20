@@ -212,10 +212,13 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
             
             for ep in show.get("episodes", []):
                 logger.debug(f"DEBUG: Processing raw episode: {ep}")
-                # Generate unique ID based on show slug, season, and episode
-                ep_key = f"{show.get('slug', '0')}-{ep.get('season', 0)}-{ep.get('episode', 0)}"
-                ep_id = abs(hash(ep_key)) % 100000000 # Use a large enough range
-                if ep_id == 0: ep_id = 1 # Ensure non-zero
+                
+                # Get ID from Medusa, fallback to deterministic hash if 0
+                ep_id = MedusaTranslator.extract_clean_integer_id(ep)
+                if ep_id == 0:
+                    ep_key = f"{show.get('slug', '0')}-{ep.get('season', 0)}-{ep.get('episode', 0)}"
+                    ep_id = abs(hash(ep_key)) % 100000000
+                    if ep_id == 0: ep_id = 1
                 
                 # Strict NZB360 schema mapping with complete nested structures
                 record = {
@@ -301,7 +304,8 @@ async def get_wanted_missing_by_id(id: int, api_key: str = Depends(get_medusa_ke
             show_name = show.get("name", "Unknown Show")
             
             for ep in show.get("episodes", []):
-                ep_id = int(extract_id_from_str(f"{series_id}{ep.get('season', 0)}{ep.get('episode', 0)}") or 0)
+                # Use the same translator logic for deterministic ID matching
+                ep_id = MedusaTranslator.extract_clean_integer_id(ep)
                 if ep_id == id:
                     return {
                         "id": ep_id,

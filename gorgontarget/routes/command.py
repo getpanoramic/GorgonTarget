@@ -229,9 +229,11 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                             
                             for ep in episodes:
                                 try:
-                                    ep_id_raw = ep.get("id")
-                                    if ep_id_raw is None: continue
-                                    ep_id = int(ep_id_raw)
+                                    # Matching the ID generation logic used in episodes.py: f"{show.get('slug', '0')}-{ep.get('season', 0)}-{ep.get('episode', 0)}"
+                                    ep_key = f"{s.get('slug', '0')}-{ep.get('season', 0)}-{ep.get('episode', 0)}"
+                                    ep_id = abs(hash(ep_key)) % 100000000 
+                                    if ep_id == 0: ep_id = 1
+                                    
                                     if ep_id in episode_ids:
                                         series_id = s_id
                                         break
@@ -265,7 +267,7 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                                 payload = {"showSlug": slug, "episodes": ep_format, "options": {}}
                                 logger.debug(f"DEBUG: Sending backlog search payload: {payload}")
                                 res = await async_client.put("/api/v2/search/backlog", json=payload, headers=medusa_headers(api_key))
-                                success = res.status_code == 200
+                                success = res.status_code == 202
                                 logger.debug(f"DEBUG: Backlog search request result code: {res.status_code}")
                             else:
                                 logger.warning("No valid episodes found to search for.")
