@@ -8,18 +8,27 @@ import re
 import os
 from datetime import datetime
 
-# Determine log path
-log_path = "/config/gorgontarget.log" if os.path.exists("/config") else "gorgontarget.log"
+# Determine log path - use /tmp/ as a safe, writable location
+log_path = "/tmp/gorgontarget.log"
 
 # Setup logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stderr),
-        logging.FileHandler(log_path)
-    ]
-)
+try:
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        handlers=[
+            logging.StreamHandler(sys.stderr),
+            logging.FileHandler(log_path)
+        ]
+    )
+except Exception as e:
+    # Fallback if file logging fails (e.g., permissions)
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        handlers=[logging.StreamHandler(sys.stderr)]
+    )
+    print(f"Warning: Could not setup file logging: {e}")
 logger = logging.getLogger("GorgonTarget")
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
