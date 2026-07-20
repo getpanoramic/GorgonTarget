@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 import time
 from ..utils import get_medusa_key, medusa_headers, logger, async_client, COMMAND_REGISTRY, extract_clean_integer_id, extract_id_from_str
+from ..translator import MedusaTranslator
 
 router = APIRouter()
 
