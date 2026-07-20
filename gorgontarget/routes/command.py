@@ -243,12 +243,14 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                                     
 
                                     # New: Check cache for direct mapping
+                                    logger.debug(f"DEBUG: Checking cache for ep_id: {ep_id}")
                                     cached_series_id = await episode_series_map.get(str(ep_id))
                                     if cached_series_id:
                                         logger.debug(f"DEBUG: Found series match {cached_series_id} in cache for ep {ep_id}")
                                         series_id = int(cached_series_id)
                                         break
-
+                                    else:
+                                        logger.debug(f"DEBUG: No cache match for ep_id {ep_id}")
                                     if ep_id in episode_ids:
                                         logger.debug(f"DEBUG: Found episode match {ep_id} in series {s_id}")
                                         series_id = s_id
