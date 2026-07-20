@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Request, HTTPException, status
+from fastapi import APIRouter, Depends, Query, Request, HTTPException, status, Response
 from typing import Optional
 from ..utils import async_client, get_medusa_key, medusa_headers, logger, parse_medusa_size
 from ..client import MedusaClient
@@ -263,6 +263,19 @@ async def get_log_file(api_key: str = Depends(get_medusa_key)):
     client = MedusaClient(api_key)
     log_content = await client.get_raw_logs()
     return log_content
+
+@router.get("/api/v3/logs/download")
+async def download_logs(api_key: str = Depends(get_medusa_key)):
+    try:
+        with open("gorgontarget.log", "r") as f:
+            log_content = f.read()
+        return Response(
+            content=log_content, 
+            media_type="text/plain", 
+            headers={"Content-Disposition": "attachment; filename=gorgontarget.log"}
+        )
+    except FileNotFoundError:
+        return Response(content="Log file not found.", media_type="text/plain", status_code=404)
 
 @router.get("/api/v3/qualityprofile")
 async def get_quality_profiles(api_key: str = Depends(get_medusa_key)):
