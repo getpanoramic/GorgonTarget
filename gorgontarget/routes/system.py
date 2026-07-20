@@ -267,7 +267,7 @@ async def get_log_file(api_key: str = Depends(get_medusa_key)):
 @router.get("/api/v3/logs/download")
 async def download_logs(api_key: str = Depends(get_medusa_key)):
     try:
-        with open("gorgontarget.log", "r") as f:
+        with open("/config/gorgontarget.log", "r") as f:
             log_content = f.read()
         return Response(
             content=log_content, 

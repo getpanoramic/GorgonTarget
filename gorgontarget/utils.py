@@ -13,7 +13,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stderr),
-        logging.FileHandler("gorgontarget.log")
+        logging.FileHandler("/config/gorgontarget.log")
     ]
 )
 logger = logging.getLogger("GorgonTarget")
