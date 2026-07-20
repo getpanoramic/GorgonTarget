@@ -237,6 +237,8 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                                         ep_id = abs(hash(ep_key)) % 100000000
                                         if ep_id == 0: ep_id = 1
                                         logger.debug(f"DEBUG: Used hash fallback for ep {ep.get('season')}/{ep.get('episode')}: key={ep_key}, id={ep_id}")
+                                    else:
+                                        logger.debug(f"DEBUG: Generated ID {ep_id} for raw ep data: {ep.get('season')}/{ep.get('episode')} - {ep.get('title')}")
                                     
                                     if ep_id in episode_ids:
                                         logger.debug(f"DEBUG: Found episode match {ep_id} in series {s_id}")
@@ -244,7 +246,7 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                                         break
                                     else:
                                         # Log occasionally or if needed
-                                        logger.debug(f"DEBUG: Episode ID {ep_id} (hash_based={ep_id==0}) does not match requested {episode_ids}")
+                                        logger.debug(f"DEBUG: Episode ID {ep_id} does not match requested {episode_ids}")
                                 except (ValueError, TypeError):
                                     continue
                             if series_id:
