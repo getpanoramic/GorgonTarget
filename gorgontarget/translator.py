@@ -6,41 +6,26 @@ from .settings import settings
 class MedusaTranslator:
     @staticmethod
     def extract_clean_integer_id(show_node: Dict[str, Any]) -> int:
-        # Check if the node itself has an 'id' that is a dict (common in some Medusa responses)
-        raw_id = show_node.get("id")
+        # Prioritize explicit unique identifiers from Medusa
+        # Medusa episodes often have a 'tvdb' ID or a unique 'id'
+        priority_keys = ['tvdb', 'id', 'indexerId']
         
-        # If the whole node is the id, handle it (rare, but possible)
-        if isinstance(show_node, dict) and "id" not in show_node and isinstance(show_node.get("id"), dict):
-             raw_id = show_node
-             
-        # If it's a dict, try extracting a numeric ID dynamically
-        if isinstance(raw_id, dict):
-            # Known priority keys for ID extraction
-            priority_keys = ['tvdb', 'imdb', 'tmdb', 'indexerId', 'id']
+        # If the input is a dictionary, check for these keys
+        if isinstance(show_node, dict):
             for key in priority_keys:
-                val = raw_id.get(key)
-                if val is not None:
+                if key in show_node:
                     try:
+                        val = show_node[key]
+                        if isinstance(val, dict):
+                             # Sometimes the ID is nested in a dict
+                             return int(val.get('id') or val.get('value') or 0)
                         return int(val)
                     except (ValueError, TypeError):
                         continue
-            
-            # Try to find any other numeric value in the dict
-            for key, val in raw_id.items():
-                if key != 'slug': # 'slug' is not a numeric id
-                    try:
-                        return int(val)
-                    except (ValueError, TypeError):
-                        continue
-            
-            # If no numeric ID found, hash the slug to create a deterministic integer ID
-            slug = raw_id.get("slug")
-            if slug:
-                return hash(slug) % 1000000 # Use a safe modulo to keep it manageable
-            return 0
-            
+        
+        # Fallback to generic parsing for non-standard structures
         try:
-            return int(raw_id)
+            return int(show_node) if not isinstance(show_node, dict) else 0
         except (ValueError, TypeError):
             return 0
 
