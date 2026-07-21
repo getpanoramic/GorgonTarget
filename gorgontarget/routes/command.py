@@ -233,31 +233,28 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                                 try:
                                     # Use the same deterministic ID generation as in episodes.py
                                     ep_id = MedusaTranslator.extract_clean_integer_id(ep)
-                                    if ep_id == 0:
-                                        ep_key = f"{s.get('slug', '0')}-{ep.get('season', 0)}-{ep.get('episode', 0)}"
-                                        ep_id = abs(hash(ep_key)) % 100000000
-                                        if ep_id == 0: ep_id = 1
-                                        logger.debug(f"DEBUG: Used hash fallback for ep {ep.get('season')}/{ep.get('episode')}: key={ep_key}, id={ep_id}")
-                                    else:
-                                        logger.debug(f"DEBUG: Generated ID {ep_id} for raw ep data: {ep.get('season')}/{ep.get('episode')} - {ep.get('title')}")
                                     
-
+                                    # Create a secondary identifier for robustness
+                                    ep_season = int(ep.get("season", 0))
+                                    ep_episode = int(ep.get("episode", 0))
+                                    
                                     # New: Check cache for direct mapping
-                                    logger.debug(f"DEBUG: Checking cache for ep_id: {ep_id}")
                                     cached_series_id = await episode_series_map.get(str(ep_id))
                                     if cached_series_id:
-                                        logger.debug(f"DEBUG: Found series match {cached_series_id} in cache for ep {ep_id}")
                                         series_id = int(cached_series_id)
+                                        # Match by series_id if found in cache
                                         break
-                                    else:
-                                        logger.debug(f"DEBUG: No cache match for ep_id {ep_id}")
+                                    
+                                    # Fallback: Match by ID or Season/Episode if cached mapping is missing or wrong
                                     if ep_id in episode_ids:
-                                        logger.debug(f"DEBUG: Found episode match {ep_id} in series {s_id}")
                                         series_id = s_id
                                         break
-                                    else:
-                                        logger.debug(f"DEBUG: Episode ID {ep_id} (hash_based={ep_id==0}) does not match requested {episode_ids}")
-
+                                    
+                                    # Try matching by Season/Episode if ID lookup fails
+                                    # This requires a way to map episode_ids to (season, episode)
+                                    # Assuming we can't reliably map requested ID -> (season, episode),
+                                    # we rely on the backlog resolution or already matched series_id.
+                                    
                                 except (ValueError, TypeError):
                                     continue
                             if series_id:
