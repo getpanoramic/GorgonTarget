@@ -294,11 +294,18 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                                 try:
                                     # Use consistent ID extraction
                                     ep_id = MedusaTranslator.extract_clean_integer_id(ep)
-                                    if ep_id in episode_ids:
+                                    
+                                    # New robust logic:
+                                    # 1. If status is 'Wanted', include it. 
+                                    # 2. Only check episode_ids if they are provided.
+                                    is_wanted = ep.get("status") == "Wanted"
+                                    is_id_match = ep_id in episode_ids
+                                    
+                                    if is_wanted or is_id_match:
                                         season = int(ep.get("season", 0))
                                         episode = int(ep.get("episode", 0))
                                         ep_format.append(f"S{season:02d}E{episode:02d}")
-                                        logger.debug(f"DEBUG: Added {ep_format[-1]} to search payload (matched ID {ep_id})")
+                                        logger.debug(f"DEBUG: Added {ep_format[-1]} to search payload (ID match: {is_id_match}, Wanted: {is_wanted})")
                                 except (ValueError, TypeError):
                                     continue
                             
