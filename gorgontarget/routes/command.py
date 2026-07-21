@@ -292,7 +292,8 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                             ep_format = []
                             for ep in episodes:
                                 try:
-                                    ep_id = int(ep.get("id") or 0)
+                                    # Use consistent ID extraction
+                                    ep_id = MedusaTranslator.extract_clean_integer_id(ep)
                                     if ep_id in episode_ids:
                                         season = int(ep.get("season", 0))
                                         episode = int(ep.get("episode", 0))
