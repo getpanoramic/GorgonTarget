@@ -292,6 +292,25 @@ async def get_quality_profiles(api_key: str = Depends(get_medusa_key)):
         {"id": 2, "name": "HD - 720p/1080p", "upgradeAllowed": False, "cutoff": 2, "items": []}
     ]
 
+@router.get("/api/v3/rootfolder")
+async def get_root_folders(api_key: str = Depends(get_medusa_key)):
+    client = MedusaClient(api_key)
+    config = await client.get_system_config()
+    disk_space = config.get("diskSpace", {})
+    root_dirs = disk_space.get("rootDir", [])
+    
+    output = []
+    for i, d in enumerate(root_dirs):
+        free_bytes = parse_medusa_size(d.get("freeSpace", "0 GB"))
+        output.append({
+            "id": i + 1,
+            "path": d.get("location"),
+            "accessible": True,
+            "freeSpace": free_bytes,
+            "unmappedFolders": []
+        })
+    return output
+
 @router.get("/api/v3/system/backup")
 async def get_backups(api_key: str = Depends(get_medusa_key)):
     res = await async_client.get("/api/v2/config/backup", headers=medusa_headers(api_key))
