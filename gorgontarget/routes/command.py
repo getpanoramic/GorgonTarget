@@ -289,6 +289,12 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                         slug = await series_map_cache.get(f"map_{series_id}") or str(series_id)
                         episodes = await client.get_episodes(series_id)
                         
+                        # Populate cache for all episodes to bridge ID discrepancies
+                        for ep in episodes:
+                             ep_id = MedusaTranslator.extract_clean_integer_id(ep)
+                             if ep_id != 0:
+                                 await episode_series_map.set(str(ep_id), series_id)
+                        
                         # Defensive check that episodes is a list
                         if not isinstance(episodes, list):
                             logger.error(f"Failed to get episodes for series {series_id}")
