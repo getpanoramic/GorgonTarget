@@ -234,29 +234,21 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                                     # Use the same deterministic ID generation as in episodes.py
                                     ep_id = MedusaTranslator.extract_clean_integer_id(ep)
                                     
-                                    # Create a secondary identifier for robustness
-                                    ep_season = int(ep.get("season", 0))
-                                    ep_episode = int(ep.get("episode", 0))
-                                    
                                     # New: Check cache for direct mapping
                                     cached_series_id = await episode_series_map.get(str(ep_id))
                                     if cached_series_id:
                                         series_id = int(cached_series_id)
-                                        # Match by series_id if found in cache
+                                        logger.debug(f"DEBUG: Found series match {series_id} in cache for ep {ep_id}")
                                         break
                                     
-                                    # Fallback: Match by ID or Season/Episode if cached mapping is missing or wrong
+                                    # Fallback: Match by ID
                                     if ep_id in episode_ids:
+                                        logger.debug(f"DEBUG: Found episode match {ep_id} in series {s_id}")
                                         series_id = s_id
                                         break
-                                    
-                                    # Try matching by Season/Episode if ID lookup fails
-                                    # This requires a way to map episode_ids to (season, episode)
-                                    # Assuming we can't reliably map requested ID -> (season, episode),
-                                    # we rely on the backlog resolution or already matched series_id.
-                                    
                                 except (ValueError, TypeError):
                                     continue
+                            
                             if series_id:
                                 logger.debug(f"DEBUG: Series match found: {series_id}")
                                 break
