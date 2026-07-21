@@ -8,17 +8,32 @@ import re
 import os
 from datetime import datetime
 
+import logging
+import sys
+import httpx
+from fastapi import Header, HTTPException, status, Query, Request
+from typing import Optional, List, Dict, Any
+from .settings import settings
+import re
+import os
+from logging.handlers import RotatingFileHandler
+from datetime import datetime
+
 # Determine log path - use /tmp/ as a safe, writable location
 log_path = "/tmp/gorgontarget.log"
 
 # Setup logging
 try:
+    # Use RotatingFileHandler to keep logs manageable and prevent truncation
+    # Max size: 5MB, Keep: 3 files
+    file_handler = RotatingFileHandler(log_path, maxBytes=5*1024*1024, backupCount=3)
+
     logging.basicConfig(
         level=logging.DEBUG,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         handlers=[
             logging.StreamHandler(sys.stderr),
-            logging.FileHandler(log_path)
+            file_handler
         ]
     )
 except Exception as e:
@@ -29,10 +44,12 @@ except Exception as e:
         handlers=[logging.StreamHandler(sys.stderr)]
     )
     print(f"Warning: Could not setup file logging: {e}")
+
 logger = logging.getLogger("GorgonTarget")
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
+
 
 # Shared HTTP client for proxying
 async_client = httpx.AsyncClient(base_url=settings.medusa_url, timeout=settings.timeout)
