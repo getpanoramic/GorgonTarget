@@ -311,6 +311,36 @@ async def get_root_folders(api_key: str = Depends(get_medusa_key)):
         })
     return output
 
+@router.get("/api/v3/languageprofile")
+async def get_language_profiles(api_key: str = Depends(get_medusa_key)):
+    client = MedusaClient(api_key)
+    config = await client.get_system_config()
+    subtitles = config.get("subtitles", {})
+    wanted_langs = subtitles.get("wantedLanguages", [])
+    
+    # Map Medusa's wantedLanguages to the requested schema
+    languages = []
+    for i, lang in enumerate(wanted_langs):
+        languages.append({
+            "id": i + 1,
+            "language": {
+                "id": i + 1,
+                "name": lang.get("name")
+            },
+            "allowed": True
+        })
+        
+    return [{
+        "id": 1,
+        "name": "Default Language Profile",
+        "upgradeAllowed": True,
+        "cutoff": {
+            "id": 1,
+            "name": "English"
+        },
+        "languages": languages
+    }]
+
 @router.get("/api/v3/system/backup")
 async def get_backups(api_key: str = Depends(get_medusa_key)):
     res = await async_client.get("/api/v2/config/backup", headers=medusa_headers(api_key))
