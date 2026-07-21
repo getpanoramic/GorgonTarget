@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query, Request, HTTPException, status, Response
+from fastapi.responses import StreamingResponse
 from typing import Optional
 from ..utils import async_client, get_medusa_key, medusa_headers, logger, parse_medusa_size
 from ..client import MedusaClient
