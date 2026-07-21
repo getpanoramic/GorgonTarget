@@ -298,6 +298,7 @@ async def execute_command(command: Dict[str, Any], api_key: str = Depends(get_me
                                         season = int(ep.get("season", 0))
                                         episode = int(ep.get("episode", 0))
                                         ep_format.append(f"S{season:02d}E{episode:02d}")
+                                        logger.debug(f"DEBUG: Added {ep_format[-1]} to search payload (matched ID {ep_id})")
                                 except (ValueError, TypeError):
                                     continue
                             

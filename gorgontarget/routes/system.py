@@ -267,16 +267,21 @@ async def get_log_file(api_key: str = Depends(get_medusa_key)):
 @router.get("/api/v3/logs/download")
 async def download_logs(api_key: str = Depends(get_medusa_key)):
     log_path = "/tmp/gorgontarget.log"
-    try:
-        with open(log_path, "r") as f:
-            log_content = f.read()
-        return Response(
-            content=log_content, 
-            media_type="text/plain", 
-            headers={"Content-Disposition": "attachment; filename=gorgontarget.log"}
-        )
-    except FileNotFoundError:
+    if not os.path.exists(log_path):
+        log_path = "gorgontarget.log"
+    
+    if not os.path.exists(log_path):
         return Response(content="Log file not found.", media_type="text/plain", status_code=404)
+
+    def iter_file():
+        with open(log_path, mode="rb") as file_like:
+            yield from file_like
+
+    return StreamingResponse(
+        iter_file(),
+        media_type="text/plain",
+        headers={"Content-Disposition": "attachment; filename=gorgontarget.log"}
+    )
 
 @router.get("/api/v3/qualityprofile")
 async def get_quality_profiles(api_key: str = Depends(get_medusa_key)):
