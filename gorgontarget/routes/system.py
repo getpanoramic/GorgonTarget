@@ -311,6 +311,12 @@ async def get_root_folders(api_key: str = Depends(get_medusa_key)):
         })
     return output
 
+@router.get("/api/v3/tag")
+async def get_tags(api_key: str = Depends(get_medusa_key)):
+    # Medusa doesn't have a direct equivalent to Sonarr tags.
+    # Return a default empty list or minimal mapping to satisfy the UI requirement.
+    return []
+
 @router.get("/api/v3/languageprofile")
 async def get_language_profiles(api_key: str = Depends(get_medusa_key)):
     client = MedusaClient(api_key)
