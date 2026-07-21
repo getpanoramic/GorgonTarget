@@ -4,6 +4,7 @@ from ..utils import async_client, get_medusa_key, medusa_headers, logger, parse_
 from ..client import MedusaClient
 import re
 import json
+import os
 
 router = APIRouter()
 
