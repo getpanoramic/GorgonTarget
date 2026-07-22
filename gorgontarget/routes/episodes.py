@@ -125,32 +125,35 @@ async def get_episode_files(
     
     episode_files = []
     for ep in medusa_episodes:
-        # Forensic logging
-        logger.debug(f"DEBUG: Raw ep for file check: {ep}")
+        # Improved forensic logging
+        logger.debug(f"DEBUG: Processing ep {ep.get('season')}x{ep.get('episode')} - Raw keys: {list(ep.keys())}")
         
         status = str(ep.get("status", "")).lower()
-        location = ep.get("location")
-        
-        # Check if location is nested in 'file' object
-        if not location:
-            location = ep.get("file", {}).get("location")
+        # Correctly extract location from nested 'file' object
+        file_node = ep.get("file")
+        if isinstance(file_node, dict):
+            location = file_node.get("location") or file_node.get("name")
+        else:
+            location = ep.get("location")
             
         logger.debug(f"DEBUG: Checking ep status='{status}', resolved_location='{location}' for ep_id: {ep.get('id')}")
         
-        # Include if it has a location OR is in a state that implies it has been handled
-        if location or status in ["downloaded", "snatched", "archived", "skipped"]:
+        # Include if it has a non-empty location
+        if location and isinstance(location, str) and location.strip():
+            # If the path looks like just a filename (not absolute),
+            # we might need to prepend a base path, but for now let's just use it
             ep_id = extract_clean_integer_id({"id": ep.get("id")})
             episode_files.append({
                 "id": ep_id,
                 "seriesId": target_id,
                 "seasonNumber": int(ep.get("season", 0)),
-                "relativePath": location or "",
-                "path": location or "",
-                "size": parse_medusa_size(ep.get("size", "0 B")),
+                "relativePath": location,
+                "path": location,
+                "size": file_node.get("size") if isinstance(file_node, dict) else parse_medusa_size(ep.get("size", "0 B")),
                 "dateAdded": ep.get("date", "2026-01-01T00:00:00Z")
             })
         else:
-            logger.debug(f"DEBUG: Episode excluded: {ep.get('season')}/{ep.get('episode')} (Status: {status}, Location: {location})")
+            logger.debug(f"DEBUG: Episode excluded due to empty/invalid location")
     logger.debug(f"get_episode_files returning {len(episode_files)} files for series {target_id}")
     return episode_files
 
