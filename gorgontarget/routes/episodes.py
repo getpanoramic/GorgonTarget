@@ -41,7 +41,10 @@ async def get_episodes(
     if not target_id: return []
     
     medusa_episodes = await client.get_episodes(target_id)
-    
+    logger.debug(f"DEBUG: Retrieved {len(medusa_episodes)} raw episodes from Medusa for series {target_id}.")
+    if medusa_episodes:
+        logger.debug(f"DEBUG: Sample raw episode: {medusa_episodes[0]}")
+
     translated_episodes = []
     for ep in medusa_episodes:
         episode = MedusaTranslator.to_sonarr_episode(ep, target_id).dict()

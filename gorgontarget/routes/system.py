@@ -276,6 +276,8 @@ async def download_logs(api_key: str = Depends(get_medusa_key)):
         return Response(content="Log file not found.", media_type="text/plain", status_code=404)
 
     def iter_file():
+        # Ensure the log file is flushed before reading
+        logging.shutdown() 
         with open(log_path, mode="rb") as file_like:
             yield from file_like
 
