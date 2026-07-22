@@ -34,17 +34,17 @@ class MedusaClient:
         await self.login()
         res = await self.client.get("/browser/", params=params, headers=self.headers)
         
-        # Log response status and partial content for debugging
-        logger.debug(f"DEBUG: /browser/ returned status {res.status_code}")
+        # Use print to ensure visibility in logs
+        print(f"[DEBUG] /browser/ returned status {res.status_code}", file=sys.stderr, flush=True)
         
         if res.status_code == 200:
             try:
                 return res.json()
             except Exception as e:
-                logger.error(f"DEBUG: Failed to decode JSON from /browser/. Content preview: {res.text[:500]}")
+                print(f"[ERROR] Failed to decode JSON from /browser/. Content preview: {res.text[:500]}", file=sys.stderr, flush=True)
                 raise e
         else:
-            logger.error(f"DEBUG: /browser/ request failed. Status: {res.status_code}, Content preview: {res.text[:500]}")
+            print(f"[ERROR] /browser/ request failed. Status: {res.status_code}, Content preview: {res.text[:500]}", file=sys.stderr, flush=True)
             return []
 
     async def detect_capabilities(self) -> Dict[str, bool]:
@@ -198,15 +198,15 @@ class MedusaClient:
         await self.login()
         res = await self.client.get("/browser/", params=params, headers=self.headers)
         
-        # Log response status and partial content for debugging
-        logger.debug(f"DEBUG: /browser/ returned status {res.status_code}")
+        # Use print to ensure visibility in logs
+        print(f"[DEBUG] /browser/ returned status {res.status_code}", file=sys.stderr, flush=True)
         
         if res.status_code == 200:
             try:
                 return res.json()
             except Exception as e:
-                logger.error(f"DEBUG: Failed to decode JSON from /browser/. Content preview: {res.text[:500]}")
+                print(f"[ERROR] Failed to decode JSON from /browser/. Content preview: {res.text[:500]}", file=sys.stderr, flush=True)
                 raise e
         else:
-            logger.error(f"DEBUG: /browser/ request failed. Status: {res.status_code}, Content preview: {res.text[:500]}")
+            print(f"[ERROR] /browser/ request failed. Status: {res.status_code}, Content preview: {res.text[:500]}", file=sys.stderr, flush=True)
             return []
