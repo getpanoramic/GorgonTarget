@@ -194,9 +194,18 @@ class MedusaClient:
         return res.json() if res.status_code == 200 else []
 
     async def browser(self, params: Dict[str, Any]) -> Any:
-        # The browser endpoint requires following redirects and might need special handling.
-        # Ensure we are using the base client which has session persistence (if enabled)
-        res = await self.client.get("/browser/", params=params, headers=self.headers, follow_redirects=True)
+        await self.login()
+        res = await self.client.get("/browser/", params=params, headers=self.headers)
+        
+        # Log response status and partial content for debugging
+        logger.debug(f"DEBUG: /browser/ returned status {res.status_code}")
+        
         if res.status_code == 200:
-            return res.json()
-        return []
+            try:
+                return res.json()
+            except Exception as e:
+                logger.error(f"DEBUG: Failed to decode JSON from /browser/. Content preview: {res.text[:500]}")
+                raise e
+        else:
+            logger.error(f"DEBUG: /browser/ request failed. Status: {res.status_code}, Content preview: {res.text[:500]}")
+            return []
