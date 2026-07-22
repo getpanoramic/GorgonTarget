@@ -152,7 +152,7 @@ class MedusaTranslator:
         )
         if has_file:
             location = medusa_ep.get("location", "")
-            # Provide a fully nested structure to satisfy Sonarr/Bazarr schema expectations
+            # Providing an exhaustive nested structure for quality
             episode.episodeFile = {
                 "id": ep_id, 
                 "seriesId": series_id, 
@@ -163,9 +163,9 @@ class MedusaTranslator:
                 "quality": {
                     "quality": {
                         "id": 1,
-                        "name": "Unknown",
-                        "source": "unknown",
-                        "resolution": 0
+                        "name": "HDTV-1080p", 
+                        "source": "hdtv",
+                        "resolution": 1080
                     },
                     "revision": {
                         "version": 1,
