@@ -275,6 +275,39 @@ import glob
 
 # ... (rest of imports)
 
+@router.get("/api/v3/filesystem")
+async def get_filesystem(
+    path: str = Query(""),
+    includeFiles: bool = Query(True),
+    api_key: str = Depends(get_medusa_key)
+):
+    # Map the Bazarr request to Medusa's browser API
+    # Medusa's browser API uses 'path' and 'includeFiles=0/1'
+    params = {"path": path, "includeFiles": "1" if includeFiles else "0"}
+    
+    res = await async_client.get("/browser/", params=params, headers=medusa_headers(api_key))
+    
+    if res.status_code != 200:
+        logger.error(f"Failed to fetch filesystem from Medusa: {res.status_code} {res.text}")
+        return []
+        
+    data = res.json()
+    
+    # Map Medusa response to Sonarr/Bazarr schema
+    formatted_items = []
+    for item in data:
+        # First item is current path
+        if "currentPath" in item:
+            continue
+            
+        formatted_items.append({
+            "name": item.get("name"),
+            "path": item.get("path"),
+            "type": "directory" if not item.get("path", "").endswith((".mkv", ".mp4", ".avi", ".ts")) else "file"
+        })
+        
+    return formatted_items
+
 @router.get("/api/v3/logs/download")
 async def download_logs(api_key: str = Depends(get_medusa_key)):
     log_base = "/tmp/gorgontarget.log"
