@@ -86,6 +86,8 @@ async def get_single_episode(episode_id: int, includeEpisodeFile: bool = Query(F
                     "monitored": ep_dict.get("monitored", True)
                 }
 
+                # Always ensure episodeFile key exists
+                compliant_ep["episodeFile"] = None
                 if includeEpisodeFile and ep_dict.get("episodeFile"):
                     ef = ep_dict["episodeFile"]
                     compliant_ep["episodeFile"] = {
@@ -96,7 +98,10 @@ async def get_single_episode(episode_id: int, includeEpisodeFile: bool = Query(F
                         "path": ef.get("path", ""),
                         "size": ef.get("size", 0),
                         "dateAdded": ef.get("dateAdded", "2026-01-01T00:00:00Z"),
-                        "quality": compliant_ep.get("quality", {"quality": {"id": 1, "name": "Unknown"}, "revision": {"version": 1, "real": 0, "isRepack": False}})
+                        "quality": {
+                            "quality": {"id": 1, "name": "HDTV-1080p", "source": "hdtv", "resolution": 1080},
+                            "revision": {"version": 1, "real": False, "isRepack": False}
+                        }
                     }
 
                 logger.debug(f"get_single_episode returning: {compliant_ep}")
@@ -140,8 +145,6 @@ async def get_episode_files(
         
         # Include if it has a non-empty location
         if location and isinstance(location, str) and location.strip():
-            # If the path looks like just a filename (not absolute),
-            # we might need to prepend a base path, but for now let's just use it
             ep_id = extract_clean_integer_id({"id": ep.get("id")})
             episode_files.append({
                 "id": ep_id,
@@ -150,7 +153,11 @@ async def get_episode_files(
                 "relativePath": location,
                 "path": location,
                 "size": file_node.get("size") if isinstance(file_node, dict) else parse_medusa_size(ep.get("size", "0 B")),
-                "dateAdded": ep.get("date", "2026-01-01T00:00:00Z")
+                "dateAdded": ep.get("date", "2026-01-01T00:00:00Z"),
+                "quality": {
+                    "quality": {"id": 1, "name": "HDTV-1080p", "source": "hdtv", "resolution": 1080},
+                    "revision": {"version": 1, "real": False, "isRepack": False}
+                }
             })
         else:
             logger.debug(f"DEBUG: Episode excluded due to empty/invalid location")
