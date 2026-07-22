@@ -152,12 +152,26 @@ class MedusaTranslator:
         )
         if has_file:
             location = medusa_ep.get("location", "")
+            # Provide a fully nested structure to satisfy Sonarr/Bazarr schema expectations
             episode.episodeFile = {
                 "id": ep_id, 
                 "seriesId": series_id, 
                 "size": cls.parse_size_to_bytes(medusa_ep.get("size", "0 B")),
                 "path": location,
                 "relativePath": location,
-                "dateAdded": medusa_ep.get("date", "2026-01-01T00:00:00Z")
+                "dateAdded": medusa_ep.get("date", "2026-01-01T00:00:00Z"),
+                "quality": {
+                    "quality": {
+                        "id": 1,
+                        "name": "Unknown",
+                        "source": "unknown",
+                        "resolution": 0
+                    },
+                    "revision": {
+                        "version": 1,
+                        "real": False,
+                        "isRepack": False
+                    }
+                }
             }
         return episode
