@@ -25,10 +25,15 @@ class MedusaClient:
         username = web_interface.get("username")
         password = web_interface.get("password")
         
+        print(f"[DEBUG] Login attempt - Username found: {bool(username)}, Password found: {bool(password)}", file=sys.stderr, flush=True)
+        
         if username and password:
             # Login to web UI to get session cookies
-            await self.client.post("/login/", data={"username": username, "password": password})
+            res = await self.client.post("/login/", data={"username": username, "password": password})
+            print(f"[DEBUG] Login response status: {res.status_code}", file=sys.stderr, flush=True)
             self.logged_in = True
+        else:
+            print("[DEBUG] Login skipped: Missing username or password in config", file=sys.stderr, flush=True)
 
     async def browser(self, params: Dict[str, Any]) -> Any:
         await self.login()
