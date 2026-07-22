@@ -33,8 +33,14 @@ class MedusaClient:
         await self.login()
         res = await self.client.get("/browser/", params=params, headers=self.headers)
         if res.status_code == 200:
-            return res.json()
-        return []
+            try:
+                return res.json()
+            except Exception as e:
+                logger.error(f"DEBUG: Failed to decode JSON from /browser/. Content: {res.text[:500]}")
+                raise e
+        else:
+            logger.error(f"DEBUG: /browser/ returned status {res.status_code}. Content: {res.text[:500]}")
+            return []
 
     async def detect_capabilities(self) -> Dict[str, bool]:
         cached = await capability_cache.get(self.api_key)
