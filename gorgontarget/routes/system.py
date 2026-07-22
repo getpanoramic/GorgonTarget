@@ -6,6 +6,7 @@ from ..client import MedusaClient
 import re
 import json
 import os
+import logging
 
 router = APIRouter()
 
@@ -266,25 +267,43 @@ async def get_log_file(api_key: str = Depends(get_medusa_key)):
     log_content = await client.get_raw_logs()
     return log_content
 
+import re
+import json
+import os
+import logging
+import glob
+
+# ... (rest of imports)
+
 @router.get("/api/v3/logs/download")
 async def download_logs(api_key: str = Depends(get_medusa_key)):
-    log_path = "/tmp/gorgontarget.log"
-    if not os.path.exists(log_path):
-        log_path = "gorgontarget.log"
+    log_base = "/tmp/gorgontarget.log"
+    # Find all rotated log files: gorgontarget.log, gorgontarget.log.1, etc.
+    log_files = glob.glob(f"{log_base}*")
     
-    if not os.path.exists(log_path):
+    # Sort files: current log should be last, rotated logs should be in order
+    # The rotating handler keeps .1 as newest, then .2, etc.
+    # We want .3 -> .2 -> .1 -> ""
+    def get_log_index(filename):
+        if filename == log_base: return 0
+        return int(filename.split('.')[-1])
+
+    # Sort files by index: .3, .2, .1, (base)
+    log_files.sort(key=get_log_index, reverse=True)
+    
+    if not log_files:
         return Response(content="Log file not found.", media_type="text/plain", status_code=404)
 
-    def iter_file():
-        # Ensure the log file is flushed before reading
-        logging.shutdown() 
-        with open(log_path, mode="rb") as file_like:
-            yield from file_like
+    def iter_files():
+        for log_file in log_files:
+            if os.path.exists(log_file):
+                with open(log_file, mode="rb") as file_like:
+                    yield from file_like
 
     return StreamingResponse(
-        iter_file(),
+        iter_files(),
         media_type="text/plain",
-        headers={"Content-Disposition": "attachment; filename=gorgontarget.log"}
+        headers={"Content-Disposition": "attachment; filename=gorgontarget_full.log"}
     )
 
 @router.get("/api/v3/qualityprofile")
