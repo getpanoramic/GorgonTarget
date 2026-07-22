@@ -25,6 +25,10 @@ class MedusaClient:
         username = web_interface.get("username")
         password = web_interface.get("password")
         
+        # Forensic logging of config structure
+        print(f"[DEBUG] Full config keys: {list(config.keys())}", file=sys.stderr, flush=True)
+        print(f"[DEBUG] webInterface keys: {list(web_interface.keys()) if isinstance(web_interface, dict) else 'Not a dict'}", file=sys.stderr, flush=True)
+        
         print(f"[DEBUG] Login attempt - Username found: {bool(username)}, Password found: {bool(password)}", file=sys.stderr, flush=True)
         
         if username and password:
