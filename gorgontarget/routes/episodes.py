@@ -125,18 +125,32 @@ async def get_episode_files(
     
     episode_files = []
     for ep in medusa_episodes:
+        # Forensic logging
+        logger.debug(f"DEBUG: Raw ep for file check: {ep}")
+        
         status = str(ep.get("status", "")).lower()
-        if status in ["downloaded", "snatched"]:
+        location = ep.get("location")
+        
+        # Check if location is nested in 'file' object
+        if not location:
+            location = ep.get("file", {}).get("location")
+            
+        logger.debug(f"DEBUG: Checking ep status='{status}', resolved_location='{location}' for ep_id: {ep.get('id')}")
+        
+        # Include if it has a location OR is in a state that implies it has been handled
+        if location or status in ["downloaded", "snatched", "archived", "skipped"]:
             ep_id = extract_clean_integer_id({"id": ep.get("id")})
             episode_files.append({
                 "id": ep_id,
                 "seriesId": target_id,
                 "seasonNumber": int(ep.get("season", 0)),
-                "relativePath": ep.get("location", ""),
-                "path": ep.get("location", ""),
+                "relativePath": location or "",
+                "path": location or "",
                 "size": parse_medusa_size(ep.get("size", "0 B")),
                 "dateAdded": ep.get("date", "2026-01-01T00:00:00Z")
             })
+        else:
+            logger.debug(f"DEBUG: Episode excluded: {ep.get('season')}/{ep.get('episode')} (Status: {status}, Location: {location})")
     logger.debug(f"get_episode_files returning {len(episode_files)} files for series {target_id}")
     return episode_files
 
