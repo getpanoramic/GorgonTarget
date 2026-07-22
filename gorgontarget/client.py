@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 from .settings import settings
 from .cache import capability_cache, series_map_cache, series_details_cache, series_episodes_cache
 from .translator import MedusaTranslator
+from .utils import logger
 
 class MedusaClient:
     def __init__(self, api_key: str):
