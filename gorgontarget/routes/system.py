@@ -281,17 +281,12 @@ async def get_filesystem(
     includeFiles: bool = Query(True),
     api_key: str = Depends(get_medusa_key)
 ):
+    client = MedusaClient(api_key)
     # Map the Bazarr request to Medusa's browser API
     # Medusa's browser API uses 'path' and 'includeFiles=0/1'
     params = {"path": path, "includeFiles": "1" if includeFiles else "0"}
     
-    res = await async_client.get("/browser/", params=params, headers=medusa_headers(api_key))
-    
-    if res.status_code != 200:
-        logger.error(f"Failed to fetch filesystem from Medusa: {res.status_code} {res.text}")
-        return []
-        
-    data = res.json()
+    data = await client.browser(params)
     
     # Map Medusa response to Sonarr/Bazarr schema
     formatted_items = []

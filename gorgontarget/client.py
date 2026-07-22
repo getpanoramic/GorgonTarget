@@ -9,10 +9,32 @@ class MedusaClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.headers = {"x-api-key": self.api_key, "Content-Type": "application/json"}
-        self.client = httpx.AsyncClient(base_url=settings.medusa_url, timeout=settings.timeout)
+        self.client = httpx.AsyncClient(base_url=settings.medusa_url, timeout=settings.timeout, follow_redirects=True)
+        self.logged_in = False
 
     async def close(self):
         await self.client.aclose()
+
+    async def login(self):
+        if self.logged_in: return
+        # Fetch login credentials from config
+        config = await self.get_system_config()
+        # Assume Medusa web config has 'username' and 'password'
+        web_interface = config.get("webInterface", {})
+        username = web_interface.get("username")
+        password = web_interface.get("password")
+        
+        if username and password:
+            # Login to web UI to get session cookies
+            await self.client.post("/login/", data={"username": username, "password": password})
+            self.logged_in = True
+
+    async def browser(self, params: Dict[str, Any]) -> Any:
+        await self.login()
+        res = await self.client.get("/browser/", params=params, headers=self.headers)
+        if res.status_code == 200:
+            return res.json()
+        return []
 
     async def detect_capabilities(self) -> Dict[str, bool]:
         cached = await capability_cache.get(self.api_key)
@@ -160,3 +182,11 @@ class MedusaClient:
     async def get_indexers(self) -> List[Dict[str, Any]]:
         res = await self.client.get("/api/v2/providers", headers=self.headers)
         return res.json() if res.status_code == 200 else []
+
+    async def browser(self, params: Dict[str, Any]) -> Any:
+        # The browser endpoint requires following redirects and might need special handling.
+        # Ensure we are using the base client which has session persistence (if enabled)
+        res = await self.client.get("/browser/", params=params, headers=self.headers, follow_redirects=True)
+        if res.status_code == 200:
+            return res.json()
+        return []
