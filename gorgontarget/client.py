@@ -18,18 +18,16 @@ class MedusaClient:
 
     async def login(self):
         if self.logged_in: return
+        
         # Fetch login credentials from config
         config = await self.get_system_config()
-        # Assume Medusa web config has 'username' and 'password'
+        
+        # Credentials are in config['webInterface']
         web_interface = config.get("webInterface", {})
         username = web_interface.get("username")
         password = web_interface.get("password")
         
-        # Forensic logging of config structure
-        print(f"[DEBUG] Full config keys: {list(config.keys())}", file=sys.stderr, flush=True)
-        print(f"[DEBUG] webInterface keys: {list(web_interface.keys()) if isinstance(web_interface, dict) else 'Not a dict'}", file=sys.stderr, flush=True)
-        
-        print(f"[DEBUG] Login attempt - Username found: {bool(username)}, Password found: {bool(password)}", file=sys.stderr, flush=True)
+        print(f"[DEBUG] Login attempt - Username extracted: {bool(username)}, Password extracted: {bool(password)}", file=sys.stderr, flush=True)
         
         if username and password:
             # Login to web UI to get session cookies
@@ -37,7 +35,7 @@ class MedusaClient:
             print(f"[DEBUG] Login response status: {res.status_code}", file=sys.stderr, flush=True)
             self.logged_in = True
         else:
-            print("[DEBUG] Login skipped: Missing username or password in config", file=sys.stderr, flush=True)
+            print(f"[DEBUG] Login skipped: Missing username or password in config. Available keys: {list(config.keys())}", file=sys.stderr, flush=True)
 
     async def browser(self, params: Dict[str, Any]) -> Any:
         await self.login()
