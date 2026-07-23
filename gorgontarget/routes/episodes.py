@@ -525,6 +525,7 @@ async def download_release(release: dict, api_key: str = Depends(get_medusa_key)
 
 @router.get("/api/v3/release")
 async def interactive_search(episodeId: int = Query(...), api_key: str = Depends(get_medusa_key)):
+    logger.error(f"DEBUG: interactive_search CALLED with episodeId: {episodeId}")
     try:
         from ..cache import search_cache
         cached_results = await search_cache.get(f"search_{episodeId}")
@@ -572,6 +573,11 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
             logger.error(f"Failed to trigger manual search: {res.status_code} {res.text}")
             raise HTTPException(status_code=500, detail=f"Failed to trigger manual search: {res.text}")
             
+        # 3. Poll for results from all enabled providers
+        providers_res = await async_client.get("/api/v2/providers", headers=medusa_headers(api_key))
+        enabled_providers = [p.get("id") for p in providers_res.json()] if providers_res.status_code == 200 else []
+        logger.debug(f"DEBUG: Enabled providers: {enabled_providers}")
+        
         results = []
         # Polling: Ensure we wait for a reasonable amount of time for all providers
         # 6 attempts, 3-second interval = 18 seconds total max.

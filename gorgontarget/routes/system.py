@@ -321,10 +321,15 @@ async def get_system_status(api_key: str = Depends(get_medusa_key)):
 @router.get("/api/v3/health")
 async def get_health_proxy(api_key: str = Depends(get_medusa_key)):
     """Maps system health status."""
-    # Ping the config to check backend responsiveness
-    res = await async_client.get("/api/v2/config", headers=medusa_headers(api_key))
-    status = "ok" if res.status_code == 200 else "error"
-    return [{"source": "Medusa", "type": status, "message": "Backend operational"}]
+    # Ping the config to check backend responsiveness with a shorter timeout
+    try:
+        # Increase timeout for this check to be more resilient
+        res = await async_client.get("/api/v2/config", headers=medusa_headers(api_key), timeout=10.0)
+        status = "ok" if res.status_code == 200 else "error"
+        return [{"source": "Medusa", "type": status, "message": "Backend operational"}]
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return [{"source": "Medusa", "type": "error", "message": "Backend unreachable"}]
 
 @router.get("/api/v3/diskspace")
 async def get_diskspace(api_key: str = Depends(get_medusa_key)):

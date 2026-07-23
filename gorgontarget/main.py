@@ -16,6 +16,8 @@ class PathNormalizationMiddleware:
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"] == "http":
             path = scope.get("path", "")
+            # High-visibility log to catch all incoming traffic
+            logger.error(f"DEBUG: ALL TRAFFIC PATH: {path}")
             logger.debug(f"Incoming path: {path}")
             new_path = path.replace("//", "/")
             while "/api/api/" in new_path:
