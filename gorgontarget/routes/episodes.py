@@ -578,18 +578,30 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
         logger.debug(f"DEBUG: Enabled providers: {enabled_providers}")
         
         results = []
-        # Optimized polling: 4 attempts, 2-second interval = 8 seconds total max
+        # Optimized polling: 4 attempts, 2-second interval, parallel requests = 8 seconds total max
         for poll_attempt in range(4):
-            import asyncio
             await asyncio.sleep(2)
             logger.debug(f"DEBUG: Polling attempt {poll_attempt + 1}")
             
+            # Fetch all providers in parallel
+            tasks = [
+                async_client.get(
+                    f"/api/v2/providers/{provider_id}/results",
+                    params={"limit": 100, "showslug": slug, "season": season, "episode": episode, "page": 1},
+                    headers=medusa_headers(api_key)
+                ) for provider_id in enabled_providers
+            ]
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
+            
             current_poll_results = []
-            for provider_id in enabled_providers:
-                res = await async_client.get(f"/api/v2/providers/{provider_id}/results", params={"limit": 100, "showslug": slug, "season": season, "episode": episode, "page": 1}, headers=medusa_headers(api_key))
+            for res in responses:
+                if isinstance(res, Exception):
+                    logger.error(f"DEBUG: Error polling provider: {res}")
+                    continue
+                
                 if res.status_code == 200:
                     provider_results = res.json()
-                    logger.debug(f"DEBUG: Provider {provider_id} returned {len(provider_results)} results")
+                    logger.debug(f"DEBUG: Provider returned {len(provider_results)} results")
                     current_poll_results.extend(provider_results)
             
             if current_poll_results:
