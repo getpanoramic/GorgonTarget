@@ -578,12 +578,9 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
         logger.debug(f"DEBUG: Enabled providers: {enabled_providers}")
         
         results = []
-        # Polling: Ensure we wait for a reasonable amount of time for all providers
-        # 5 attempts, 3-second interval = 15 seconds total max
-        for poll_attempt in range(5):
-            await asyncio.sleep(3)
-            logger.debug(f"DEBUG: Polling attempt {poll_attempt + 1}")
-            
+        # Aggressive polling: 4 attempts, 2-second interval, parallel requests = 8 seconds total max.
+        # Return results immediately if found to prevent client timeouts.
+        for poll_attempt in range(4):
             # Fetch all providers in parallel
             tasks = [
                 async_client.get(
@@ -605,6 +602,13 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
                         for new_res in provider_results:
                             if not any(r.get("identifier") == new_res.get("identifier") for r in results):
                                 results.append(new_res)
+            
+            # EAGER RETURN: If we found any results, return them immediately.
+            if results:
+                logger.debug(f"DEBUG: Eagerly returning {len(results)} results at attempt {poll_attempt + 1}")
+                break
+                
+            await asyncio.sleep(2)
         
         logger.debug(f"DEBUG: Total results aggregated: {len(results)}")
         
