@@ -151,6 +151,7 @@ async def get_episode_files(
             "id": ep_id,
             "seriesId": target_id,
             "seasonNumber": int(ep.get("season", 0)),
+            "episodeIds": [ep_id], # Added missing field
             "relativePath": location if location and isinstance(location, str) and location.strip() else None,
             "path": location if location and isinstance(location, str) and location.strip() else None,
             "size": file_node.get("size") if isinstance(file_node, dict) else parse_medusa_size(ep.get("size", "0 B")),

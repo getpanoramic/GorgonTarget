@@ -134,8 +134,13 @@ class MedusaTranslator:
 
     @classmethod
     def to_sonarr_episode(cls, medusa_ep: Dict[str, Any], series_id: int) -> SonarrEpisode:
+        # Forensic logging
+        logger.debug(f"DEBUG: Translating episode: {medusa_ep.get('identifier')} - Keys: {list(medusa_ep.keys())}")
+        
         status = str(medusa_ep.get("status", "")).lower()
-        has_file = status in ["downloaded", "snatched"]
+        # Include 'archived' as having a file, as seen in Twin Peaks logs
+        has_file = status in ["downloaded", "snatched", "archived"]
+        
         # Use the robust extraction method to handle nested dictionaries
         ep_id = cls.extract_clean_integer_id(medusa_ep)
 
@@ -150,9 +155,23 @@ class MedusaTranslator:
             monitored=True,
             hasFile=has_file
         )
+        
+        # Always initialize episodeFile as None to satisfy schema expectations
+        episode.episodeFile = None
+        
         if has_file:
-            location = medusa_ep.get("location", "")
-            # Providing an exhaustive nested structure for quality
+            # Try to find location in multiple places
+            file_node = medusa_ep.get("file")
+            location = ""
+            if isinstance(file_node, dict):
+                location = file_node.get("location") or file_node.get("name", "")
+            
+            # Fallback if file node is missing but location is in root
+            if not location:
+                location = medusa_ep.get("location", "")
+                
+            logger.debug(f"DEBUG: Translated location for {medusa_ep.get('identifier')}: {location}")
+                
             episode.episodeFile = {
                 "id": ep_id, 
                 "seriesId": series_id, 
@@ -163,7 +182,7 @@ class MedusaTranslator:
                 "quality": {
                     "quality": {
                         "id": 1,
-                        "name": "HDTV-1080p", 
+                        "name": str(medusa_ep.get("quality", "HDTV-1080p")), 
                         "source": "hdtv",
                         "resolution": 1080
                     },
