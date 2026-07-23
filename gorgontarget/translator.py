@@ -144,10 +144,23 @@ class MedusaTranslator:
         # Use the robust extraction method to handle nested dictionaries
         ep_id = cls.extract_clean_integer_id(medusa_ep)
 
+        # Try to find location in multiple places
+        file_node = medusa_ep.get("file")
+        location = ""
+        if isinstance(file_node, dict):
+            location = file_node.get("location") or file_node.get("name", "")
+        
+        # Fallback if file node is missing or empty but location is in root
+        if not location:
+            location = medusa_ep.get("location", "")
+        
+        # If still empty but status is downloaded, it's a Medusa data issue. 
+        # For Bazarr, we must report the episode exists even if location is unknown.
+        
         episode = SonarrEpisode(
             id=ep_id,
             seriesId=series_id,
-            episodeFileId=ep_id if has_file else 0,
+            episodeFileId=ep_id if (has_file and location) else 0,
             seasonNumber=int(medusa_ep.get("season", 0)),
             episodeNumber=int(medusa_ep.get("episode", medusa_ep.get("number", 0))),
             title=medusa_ep.get("title", ""),
@@ -156,22 +169,10 @@ class MedusaTranslator:
             hasFile=has_file
         )
         
-        # Always initialize episodeFile as None to satisfy schema expectations
+        # Always initialize episodeFile as None
         episode.episodeFile = None
         
-        if has_file:
-            # Try to find location in multiple places
-            file_node = medusa_ep.get("file")
-            location = ""
-            if isinstance(file_node, dict):
-                location = file_node.get("location") or file_node.get("name", "")
-            
-            # Fallback if file node is missing but location is in root
-            if not location:
-                location = medusa_ep.get("location", "")
-                
-            logger.debug(f"DEBUG: Translated location for {medusa_ep.get('identifier')}: {location}")
-                
+        if has_file and location:
             episode.episodeFile = {
                 "id": ep_id, 
                 "seriesId": series_id, 
