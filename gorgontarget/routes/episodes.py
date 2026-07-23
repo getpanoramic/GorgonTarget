@@ -52,6 +52,7 @@ async def get_episodes(
             episode.pop("episodeFile", None)
         translated_episodes.append(episode)
         
+    logger.debug(f"DEBUG: Returning {len(translated_episodes)} episodes. Sample: {translated_episodes[0] if translated_episodes else 'None'}")
     return translated_episodes
 
 @router.get("/api/v3/episode/{episode_id}")
