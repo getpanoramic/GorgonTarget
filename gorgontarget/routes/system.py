@@ -289,19 +289,31 @@ async def get_filesystem(
     data = await client.browser(params)
     
     # Map Medusa response to Sonarr/Bazarr schema
-    formatted_items = []
+    directories = []
+    files = []
+    
     for item in data:
-        # First item is current path
+        # Skip the current path item if it exists
         if "currentPath" in item:
             continue
             
-        formatted_items.append({
+        is_file = item.get("path", "").endswith((".mkv", ".mp4", ".avi", ".ts"))
+        formatted_item = {
             "name": item.get("name"),
             "path": item.get("path"),
-            "type": "directory" if not item.get("path", "").endswith((".mkv", ".mp4", ".avi", ".ts")) else "file"
-        })
+            "type": "file" if is_file else "directory"
+        }
         
-    return formatted_items
+        if is_file:
+            files.append(formatted_item)
+        else:
+            directories.append(formatted_item)
+        
+    return {
+        "path": path,
+        "directories": directories,
+        "files": files
+    }
 
 @router.get("/api/v3/logs/download")
 async def download_logs(api_key: str = Depends(get_medusa_key)):
