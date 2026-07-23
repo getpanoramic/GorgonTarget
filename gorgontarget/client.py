@@ -45,6 +45,10 @@ class MedusaClient:
         print(f"[DEBUG] /browser/ returned status {res.status_code}", file=sys.stderr, flush=True)
         
         if res.status_code == 200:
+            if "application/json" not in res.headers.get("content-type", ""):
+                print(f"[ERROR] Expected JSON from /browser/ but got {res.headers.get('content-type')}. Content preview: {res.text[:500]}", file=sys.stderr, flush=True)
+                raise Exception("Authentication required or invalid response from backend")
+                
             try:
                 return res.json()
             except Exception as e:
@@ -209,6 +213,10 @@ class MedusaClient:
         print(f"[DEBUG] /browser/ returned status {res.status_code}", file=sys.stderr, flush=True)
         
         if res.status_code == 200:
+            if "application/json" not in res.headers.get("content-type", ""):
+                print(f"[ERROR] Expected JSON from /browser/ but got {res.headers.get('content-type')}. Content preview: {res.text[:500]}", file=sys.stderr, flush=True)
+                raise Exception("Authentication required or invalid response from backend")
+                
             try:
                 return res.json()
             except Exception as e:
