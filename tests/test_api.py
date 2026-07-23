@@ -47,25 +47,13 @@ async def test_get_diskspace(mock_medusa_client_class, async_app_client):
     assert data[1]["path"] == "/media/hdd2/Shows"
 
 @pytest.mark.asyncio
-@patch("gorgontarget.routes.system.core_system_status")
-async def test_system_status(mock_core_status, async_app_client):
-    # Mock the internal function so no real network requests are made
-    mock_core_status.return_value = {
-        "version": "3.0.10.1567",
-        "startupPath": "/app",
-        "appData": "/config",
-        "osName": "linux",
-        "osVersion": "alpine",
-        "isNetCore": True,
-        "appName": "Sonarr"
-    }
-    
+async def test_system_status(async_app_client):
     response = await async_app_client.get("/api/v3/system/status", headers={"X-Api-Key": "testkey"})
     
     assert response.status_code == 200
     data = response.json()
     assert data["appName"] == "Sonarr"
-    assert data["version"] == "3.0.10.1567"
+    assert data["version"] == "4.0.0"
     assert data["startupPath"] == "/app"
     assert data["osName"] == "linux"
 
