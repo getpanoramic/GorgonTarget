@@ -6,6 +6,21 @@ router = APIRouter()
 
 async def get_medusa_client(api_key: str = Depends(get_medusa_key)):
     return MedusaClient(api_key)
+@router.get("/api/v3/config/ui")
+async def get_config_ui():
+    return {
+        "id": 1,
+        "firstDayOfWeek": 1,
+        "calendarWeekColumnHeader": None,
+        "shortDateFormat": None,
+        "longDateFormat": None,
+        "timeFormat": None,
+        "showRelativeDates": True,
+        "enableColorImpairedMode": True,
+        "theme": None,
+        "uiLanguage": 1
+    }
+
 @router.get("/api/v3/config/host")
 async def get_config_host(client: MedusaClient = Depends(get_medusa_client)):
     config = await client.get_system_config()

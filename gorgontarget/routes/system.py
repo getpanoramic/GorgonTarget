@@ -42,6 +42,15 @@ async def core_system_status(api_key: str):
         "appName": "Sonarr"
     }
 
+@router.get("/api/v3/language")
+async def get_languages():
+    return [
+        {"id": 1, "name": "English", "nameLower": "english"},
+        {"id": 2, "name": "French", "nameLower": "french"},
+        {"id": 3, "name": "German", "nameLower": "german"},
+        {"id": 4, "name": "Spanish", "nameLower": "spanish"}
+    ]
+
 @router.get("/api/v3/system/task")
 async def get_system_tasks(api_key: str = Depends(get_medusa_key)):
     client = MedusaClient(api_key)
