@@ -134,8 +134,8 @@ class MedusaTranslator:
 
     @classmethod
     def to_sonarr_episode(cls, medusa_ep: Dict[str, Any], series_id: int) -> SonarrEpisode:
-        # Forensic logging
-        logger.debug(f"DEBUG: Translating episode: {medusa_ep.get('identifier')} - Keys: {list(medusa_ep.keys())}")
+        # Forensic logging: dump everything
+        logger.error(f"DEBUG: FORENSIC DUMP of raw episode: {medusa_ep}")
         
         status = str(medusa_ep.get("status", "")).lower()
         # Include 'archived' as having a file, as seen in Twin Peaks logs
@@ -154,8 +154,7 @@ class MedusaTranslator:
         if not location:
             location = medusa_ep.get("location", "")
         
-        # If still empty but status is downloaded, it's a Medusa data issue. 
-        # For Bazarr, we must report the episode exists even if location is unknown.
+        logger.error(f"DEBUG: Resolved location: '{location}' for ep_id: {ep_id}, has_file: {has_file}")
         
         episode = SonarrEpisode(
             id=ep_id,
@@ -173,10 +172,26 @@ class MedusaTranslator:
         episode.episodeFile = None
         
         if has_file and location:
+            # Try to find location and size in file_node
+            file_node = medusa_ep.get("file")
+            location = ""
+            file_size = 0
+            
+            if isinstance(file_node, dict):
+                location = file_node.get("location") or file_node.get("name", "")
+                file_size = cls.parse_size_to_bytes(file_node.get("size", "0 B"))
+            
+            # Fallback if file node is missing or empty but location is in root
+            if not location:
+                location = medusa_ep.get("location", "")
+                file_size = cls.parse_size_to_bytes(medusa_ep.get("size", "0 B"))
+                
+            logger.debug(f"DEBUG: Translated location for {medusa_ep.get('identifier')}: {location}, size: {file_size}")
+                
             episode.episodeFile = {
                 "id": ep_id, 
                 "seriesId": series_id, 
-                "size": cls.parse_size_to_bytes(medusa_ep.get("size", "0 B")),
+                "size": file_size,
                 "path": location,
                 "relativePath": location,
                 "dateAdded": medusa_ep.get("date", "2026-01-01T00:00:00Z"),
