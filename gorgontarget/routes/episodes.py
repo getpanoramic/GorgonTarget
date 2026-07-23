@@ -578,9 +578,10 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
         logger.debug(f"DEBUG: Enabled providers: {enabled_providers}")
         
         results = []
-        # Optimized polling: 4 attempts, 2-second interval, parallel requests = 8 seconds total max
-        for poll_attempt in range(4):
-            await asyncio.sleep(2)
+        # Polling: Ensure we wait for a reasonable amount of time for all providers
+        # 5 attempts, 3-second interval = 15 seconds total max
+        for poll_attempt in range(5):
+            await asyncio.sleep(3)
             logger.debug(f"DEBUG: Polling attempt {poll_attempt + 1}")
             
             # Fetch all providers in parallel
@@ -593,23 +594,19 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
             ]
             responses = await asyncio.gather(*tasks, return_exceptions=True)
             
-            current_poll_results = []
             for res in responses:
                 if isinstance(res, Exception):
-                    logger.error(f"DEBUG: Error polling provider: {res}")
                     continue
                 
                 if res.status_code == 200:
                     provider_results = res.json()
-                    logger.debug(f"DEBUG: Provider returned {len(provider_results)} results")
-                    current_poll_results.extend(provider_results)
-            
-            if current_poll_results:
-                results = current_poll_results
-                logger.debug(f"DEBUG: Search results found on attempt {poll_attempt + 1}")
-                break
+                    if isinstance(provider_results, list):
+                        # Add results if not already present (based on identifier)
+                        for new_res in provider_results:
+                            if not any(r.get("identifier") == new_res.get("identifier") for r in results):
+                                results.append(new_res)
         
-        logger.debug(f"DEBUG: Total results found: {len(results)}")
+        logger.debug(f"DEBUG: Total results aggregated: {len(results)}")
         
         if results:
             from datetime import datetime
