@@ -144,24 +144,26 @@ async def get_episode_files(
             
         logger.debug(f"DEBUG: Checking ep status='{status}', resolved_location='{location}' for ep_id: {ep.get('id')}")
         
-        # Include if it has a non-empty location
-        if location and isinstance(location, str) and location.strip():
-            ep_id = extract_clean_integer_id({"id": ep.get("id")})
-            episode_files.append({
-                "id": ep_id,
-                "seriesId": target_id,
-                "seasonNumber": int(ep.get("season", 0)),
-                "relativePath": location,
-                "path": location,
-                "size": file_node.get("size") if isinstance(file_node, dict) else parse_medusa_size(ep.get("size", "0 B")),
-                "dateAdded": ep.get("date", "2026-01-01T00:00:00Z"),
-                "quality": {
-                    "quality": {"id": 1, "name": "HDTV-1080p", "source": "hdtv", "resolution": 1080},
-                    "revision": {"version": 1, "real": False, "isRepack": False}
-                }
-            })
-        else:
-            logger.debug(f"DEBUG: Episode excluded due to empty/invalid location")
+        ep_id = extract_clean_integer_id({"id": ep.get("id")})
+        
+        # Include all episodes; set file fields to None if no location exists
+        episode_files.append({
+            "id": ep_id,
+            "seriesId": target_id,
+            "seasonNumber": int(ep.get("season", 0)),
+            "relativePath": location if location and isinstance(location, str) and location.strip() else None,
+            "path": location if location and isinstance(location, str) and location.strip() else None,
+            "size": file_node.get("size") if isinstance(file_node, dict) else parse_medusa_size(ep.get("size", "0 B")),
+            "dateAdded": ep.get("date", "2026-01-01T00:00:00Z"),
+            "quality": {
+                "quality": {"id": 1, "name": "HDTV-1080p", "source": "hdtv", "resolution": 1080},
+                "revision": {"version": 1, "real": False, "isRepack": False}
+            } if location and isinstance(location, str) and location.strip() else {
+                "quality": {"id": 0, "name": "Unknown", "source": "unknown", "resolution": 0},
+                "revision": {"version": 0, "real": False, "isRepack": False}
+            }
+        })
+        
     logger.debug(f"get_episode_files returning {len(episode_files)} files for series {target_id}")
     return episode_files
 
