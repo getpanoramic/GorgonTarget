@@ -51,6 +51,211 @@ async def get_languages():
         {"id": 4, "name": "Spanish", "nameLower": "spanish"}
     ]
 
+@router.get("/api/v3/wanted/cutoff")
+async def get_wanted_cutoff(page: int = Query(1), pageSize: int = Query(50)):
+    return {
+        "page": page,
+        "pageSize": pageSize,
+        "sortKey": None,
+        "sortDirection": "default",
+        "totalRecords": 1,
+        "records": [
+            {
+                "id": 1,
+                "seriesId": 1,
+                "tvdbId": 1,
+                "episodeFileId": 1,
+                "seasonNumber": 1,
+                "episodeNumber": 1,
+                "title": None,
+                "airDate": None,
+                "airDateUtc": None,
+                "lastSearchTime": None,
+                "runtime": 1,
+                "finaleType": None,
+                "overview": None,
+                "episodeFile": {
+                    "id": 1,
+                    "seriesId": 1,
+                    "seasonNumber": 1,
+                    "relativePath": None,
+                    "path": None,
+                    "size": 1,
+                    "dateAdded": "2026-07-23T17:24:40.705Z",
+                    "sceneName": None,
+                    "releaseGroup": None,
+                    "languages": [{"id": 1, "name": None}],
+                    "quality": {
+                        "quality": {"id": 1, "name": None, "source": "unknown", "resolution": 1},
+                        "revision": {"version": 1, "real": 1, "isRepack": True}
+                    },
+                    "customFormats": [
+                        {
+                            "id": 1,
+                            "name": None,
+                            "includeCustomFormatWhenRenaming": None,
+                            "specifications": [
+                                {
+                                    "id": 1,
+                                    "name": None,
+                                    "implementation": None,
+                                    "implementationName": None,
+                                    "infoLink": None,
+                                    "negate": True,
+                                    "required": True,
+                                    "fields": [
+                                        {
+                                            "order": 1,
+                                            "name": None,
+                                            "label": None,
+                                            "unit": None,
+                                            "helpText": None,
+                                            "helpTextWarning": None,
+                                            "helpLink": None,
+                                            "value": None,
+                                            "type": None,
+                                            "advanced": True,
+                                            "selectOptions": ["[Max Depth Exceeded]"],
+                                            "selectOptionsProviderAction": None,
+                                            "section": None,
+                                            "hidden": None,
+                                            "privacy": "normal",
+                                            "placeholder": None,
+                                            "isFloat": True
+                                        }
+                                    ],
+                                    "presets": []
+                                }
+                            ]
+                        }
+                    ],
+                    "customFormatScore": 1,
+                    "indexerFlags": None,
+                    "releaseType": "unknown",
+                    "mediaInfo": {
+                        "id": 1,
+                        "audioBitrate": 1,
+                        "audioChannels": 1,
+                        "audioCodec": None,
+                        "audioLanguages": None,
+                        "audioStreamCount": 1,
+                        "videoBitDepth": 1,
+                        "videoBitrate": 1,
+                        "videoCodec": None,
+                        "videoFps": 1,
+                        "videoDynamicRange": None,
+                        "videoDynamicRangeType": None,
+                        "resolution": None,
+                        "runTime": None,
+                        "scanType": None,
+                        "subtitles": None
+                    },
+                    "qualityCutoffNotMet": True
+                },
+                "hasFile": True,
+                "monitored": True,
+                "absoluteEpisodeNumber": None,
+                "sceneAbsoluteEpisodeNumber": None,
+                "sceneEpisodeNumber": None,
+                "sceneSeasonNumber": None,
+                "unverifiedSceneNumbering": True,
+                "endTime": None,
+                "grabDate": None,
+                "series": {
+                    "id": 1,
+                    "title": None,
+                    "alternateTitles": [
+                        {
+                            "title": None,
+                            "seasonNumber": None,
+                            "sceneSeasonNumber": None,
+                            "sceneOrigin": None,
+                            "comment": None
+                        }
+                    ],
+                    "sortTitle": None,
+                    "status": "continuing",
+                    "ended": True,
+                    "profileName": None,
+                    "overview": None,
+                    "nextAiring": None,
+                    "previousAiring": None,
+                    "network": None,
+                    "airTime": None,
+                    "images": [
+                        {"coverType": "unknown", "url": None, "remoteUrl": None}
+                    ],
+                    "originalLanguage": {"id": 1, "name": None},
+                    "remotePoster": None,
+                    "seasons": [
+                        {
+                            "seasonNumber": 1,
+                            "monitored": True,
+                            "statistics": {
+                                "nextAiring": None,
+                                "previousAiring": None,
+                                "episodeFileCount": 1,
+                                "episodeCount": 1,
+                                "totalEpisodeCount": 1,
+                                "sizeOnDisk": 1,
+                                "releaseGroups": ["string"],
+                                "percentOfEpisodes": 1
+                            },
+                            "images": [
+                                {"coverType": "unknown", "url": None, "remoteUrl": None}
+                            ]
+                        }
+                    ],
+                    "year": 1,
+                    "path": None,
+                    "qualityProfileId": 1,
+                    "seasonFolder": True,
+                    "monitored": True,
+                    "monitorNewItems": "all",
+                    "useSceneNumbering": True,
+                    "runtime": 1,
+                    "tvdbId": 1,
+                    "tvRageId": 1,
+                    "tvMazeId": 1,
+                    "tmdbId": 1,
+                    "firstAired": None,
+                    "lastAired": None,
+                    "seriesType": "standard",
+                    "cleanTitle": None,
+                    "imdbId": None,
+                    "titleSlug": None,
+                    "rootFolderPath": None,
+                    "folder": None,
+                    "certification": None,
+                    "genres": ["string"],
+                    "tags": [1],
+                    "added": "2026-07-23T17:24:40.705Z",
+                    "addOptions": {
+                        "ignoreEpisodesWithFiles": True,
+                        "ignoreEpisodesWithoutFiles": True,
+                        "monitor": "unknown",
+                        "searchForMissingEpisodes": True,
+                        "searchForCutoffUnmetEpisodes": True
+                    },
+                    "ratings": {"votes": 1, "value": 1},
+                    "statistics": {
+                        "seasonCount": 1,
+                        "episodeFileCount": 1,
+                        "episodeCount": 1,
+                        "totalEpisodeCount": 1,
+                        "sizeOnDisk": 1,
+                        "releaseGroups": ["string"],
+                        "percentOfEpisodes": 1
+                    },
+                    "episodesChanged": None
+                },
+                "images": [
+                    {"coverType": "unknown", "url": None, "remoteUrl": None}
+                ]
+            }
+        ]
+    }
+
 @router.get("/api/v3/system/task")
 async def get_system_tasks(api_key: str = Depends(get_medusa_key)):
     client = MedusaClient(api_key)

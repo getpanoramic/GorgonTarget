@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from ..utils import get_medusa_key, logger
 from ..client import MedusaClient
 
@@ -6,6 +6,7 @@ router = APIRouter()
 
 async def get_medusa_client(api_key: str = Depends(get_medusa_key)):
     return MedusaClient(api_key)
+
 @router.get("/api/v3/config/ui")
 async def get_config_ui():
     return {
@@ -92,3 +93,126 @@ async def get_config_downloadclient(client: MedusaClient = Depends(get_medusa_cl
 async def get_config_importlist(client: MedusaClient = Depends(get_medusa_client)):
     # Import list is not clearly defined in the config example, returning empty list
     return []
+
+@router.get("/api/v3/importlistexclusion/paged")
+async def get_import_list_exclusions(page: int = Query(1), pageSize: int = Query(50)):
+    return {
+        "page": page,
+        "pageSize": pageSize,
+        "sortKey": None,
+        "sortDirection": "default",
+        "totalRecords": 1,
+        "records": [
+            {"id": 1, "tvdbId": 1, "title": None}
+        ]
+    }
+
+@router.get("/api/v3/customfilter")
+async def get_custom_filters():
+    return [
+        {
+            "id": 1,
+            "type": None,
+            "label": None,
+            "filters": [{}]
+        }
+    ]
+
+@router.get("/api/v3/customformat")
+async def get_custom_formats():
+    return []
+
+@router.get("/api/v3/remotepathmapping")
+async def get_remote_path_mappings():
+    return [
+        {
+            "id": 1,
+            "host": None,
+            "remotePath": None,
+            "localPath": None
+        }
+    ]
+
+@router.get("/api/v3/metadata")
+async def get_metadata():
+    return [
+        {
+            "id": 1,
+            "name": None,
+            "fields": [
+                {
+                    "order": 1,
+                    "name": None,
+                    "label": None,
+                    "unit": None,
+                    "helpText": None,
+                    "helpTextWarning": None,
+                    "helpLink": None,
+                    "value": None,
+                    "type": None,
+                    "advanced": True,
+                    "selectOptions": [
+                        {"value": 1, "name": None, "order": 1, "hint": None}
+                    ],
+                    "selectOptionsProviderAction": None,
+                    "section": None,
+                    "hidden": None,
+                    "privacy": "normal",
+                    "placeholder": None,
+                    "isFloat": True
+                }
+            ],
+            "implementationName": None,
+            "implementation": None,
+            "configContract": None,
+            "infoLink": None,
+            "message": {"message": None, "type": "info"},
+            "tags": [1],
+            "presets": [],
+            "enable": True
+        }
+    ]
+
+@router.get("/api/v3/autotagging")
+async def get_autotagging():
+    return [
+        {
+            "id": 1,
+            "name": None,
+            "removeTagsAutomatically": True,
+            "tags": [1],
+            "specifications": [
+                {
+                    "id": 1,
+                    "name": None,
+                    "implementation": None,
+                    "implementationName": None,
+                    "negate": True,
+                    "required": True,
+                    "fields": [
+                        {
+                            "order": 1,
+                            "name": None,
+                            "label": None,
+                            "unit": None,
+                            "helpText": None,
+                            "helpTextWarning": None,
+                            "helpLink": None,
+                            "value": None,
+                            "type": None,
+                            "advanced": True,
+                            "selectOptions": [
+                                {"value": 1, "name": None, "order": 1, "hint": None}
+                            ],
+                            "selectOptionsProviderAction": None,
+                            "section": None,
+                            "hidden": None,
+                            "privacy": "normal",
+                            "placeholder": None,
+                            "isFloat": True
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
