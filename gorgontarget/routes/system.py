@@ -7,40 +7,9 @@ import re
 import json
 import os
 import logging
+import glob
 
 router = APIRouter()
-
-async def core_system_status(api_key: str):
-    client = MedusaClient(api_key)
-    medusa_config = await client.get_system_config()
-    
-    medusa_version = "3.0.10.1567"
-    os_name = "linux"
-    startup_path = "/app"
-    app_data = "/config"
-    
-    if medusa_config:
-        main_config = medusa_config.get("main", {}) or medusa_config.get("app", {})
-        if "version" in main_config:
-            medusa_version = main_config.get("version")
-        running_dir = main_config.get("rootDir", main_config.get("dataDir", "/config"))
-        if "\\" in running_dir:
-            os_name = "windows"
-            startup_path = "C:\\Program Files\\Medusa"
-            app_data = running_dir
-        else:
-            startup_path = main_config.get("rootDir", "/app")
-            app_data = main_config.get("dataDir", "/config")
-
-    return {
-        "version": medusa_version,
-        "startupPath": startup_path,
-        "appData": app_data,
-        "osName": os_name,
-        "osVersion": "alpine" if os_name == "linux" else "NT",
-        "isNetCore": True,
-        "appName": "Sonarr"
-    }
 
 @router.get("/api/v3/language")
 async def get_languages():
@@ -312,7 +281,42 @@ async def trigger_task(task_name: str, api_key: str = Depends(get_medusa_key)):
 @router.get("/api/system/status")
 @router.get("/api/v3/system/status")
 async def get_system_status(api_key: str = Depends(get_medusa_key)):
-    return await core_system_status(api_key)
+    # Medusa doesn't expose all these fields, mapping best effort
+    now = "2026-07-23T20:22:08.218Z"
+    return {
+        "appName": "Sonarr",
+        "instanceName": "GorgonTarget",
+        "version": "4.0.0",
+        "buildTime": now,
+        "isDebug": True,
+        "isProduction": True,
+        "isAdmin": True,
+        "isUserInteractive": True,
+        "startupPath": "/app",
+        "appData": "/config",
+        "osName": "linux",
+        "osVersion": "alpine",
+        "isNetCore": True,
+        "isLinux": True,
+        "isOsx": False,
+        "isWindows": False,
+        "isDocker": True,
+        "mode": "console",
+        "branch": "master",
+        "authentication": "none",
+        "sqliteVersion": "3.37.0",
+        "migrationVersion": 1,
+        "urlBase": "",
+        "runtimeVersion": "3.11",
+        "runtimeName": "python",
+        "startTime": now,
+        "packageVersion": "4.0.0",
+        "packageAuthor": "GorgonTarget",
+        "packageUpdateMechanism": "builtIn",
+        "packageUpdateMechanismMessage": None,
+        "databaseVersion": "1",
+        "databaseType": "sqLite"
+    }
 
 @router.get("/api/v3/health")
 async def get_health_proxy(api_key: str = Depends(get_medusa_key)):
@@ -480,14 +484,6 @@ async def get_log_file(api_key: str = Depends(get_medusa_key)):
     client = MedusaClient(api_key)
     log_content = await client.get_raw_logs()
     return log_content
-
-import re
-import json
-import os
-import logging
-import glob
-
-# ... (rest of imports)
 
 @router.get("/api/v3/filesystem")
 async def get_filesystem(
