@@ -578,9 +578,10 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
         logger.debug(f"DEBUG: Enabled providers: {enabled_providers}")
         
         results = []
-        for poll_attempt in range(5):
+        # Optimized polling: 4 attempts, 2-second interval = 8 seconds total max
+        for poll_attempt in range(4):
             import asyncio
-            await asyncio.sleep(3)
+            await asyncio.sleep(2)
             logger.debug(f"DEBUG: Polling attempt {poll_attempt + 1}")
             
             current_poll_results = []
