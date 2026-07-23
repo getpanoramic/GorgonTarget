@@ -630,20 +630,24 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
                 
                 return {
                     "id": i + 1,
-                    "guid": r.get("identifier"),
+                    "guid": f"Medusa-{r.get('provider', {}).get('name')}-{r.get('identifier')}",
                     "title": release_str,
                     "indexerId": i,
-                    "indexer": r.get("provider", {}).get("name"),
+                    "indexer": r.get("provider", {}).get("name", "Unknown"),
                     "seriesId": r.get("seriesId"),
                     "episodeIds": [episodeId],
                     "quality": {
                         "quality": {
-                            "id": 1, 
-                            "name": str(r.get("quality", "HDTV")), 
-                            "source": "unknown", 
+                            "id": 1,
+                            "name": str(r.get("quality", "HDTV")),
+                            "source": "unknown",
                             "resolution": 0
                         },
-                        "revision": {"version": 1, "real": 1 if is_real else 0, "isRepack": is_repack}
+                        "revision": {
+                            "version": 1,
+                            "real": is_real,
+                            "isRepack": is_repack
+                        }
                     },
                     "age": age_days,
                     "size": r.get("size", 0),
