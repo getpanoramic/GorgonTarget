@@ -572,15 +572,14 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
             logger.error(f"Failed to trigger manual search: {res.status_code} {res.text}")
             raise HTTPException(status_code=500, detail=f"Failed to trigger manual search: {res.text}")
             
-        # 3. Poll for results from all enabled providers
-        providers_res = await async_client.get("/api/v2/providers", headers=medusa_headers(api_key))
-        enabled_providers = [p.get("id") for p in providers_res.json()] if providers_res.status_code == 200 else []
-        logger.debug(f"DEBUG: Enabled providers: {enabled_providers}")
-        
         results = []
-        # Aggressive polling: 4 attempts, 2-second interval, parallel requests = 8 seconds total max.
-        # Return results immediately if found to prevent client timeouts.
-        for poll_attempt in range(4):
+        # Polling: Ensure we wait for a reasonable amount of time for all providers
+        # 6 attempts, 3-second interval = 18 seconds total max.
+        # We wait for the full duration to ensure all indexers have time to report.
+        for poll_attempt in range(6):
+            await asyncio.sleep(3)
+            logger.debug(f"DEBUG: Polling attempt {poll_attempt + 1}")
+            
             # Fetch all providers in parallel
             tasks = [
                 async_client.get(
@@ -602,13 +601,6 @@ async def interactive_search(episodeId: int = Query(...), api_key: str = Depends
                         for new_res in provider_results:
                             if not any(r.get("identifier") == new_res.get("identifier") for r in results):
                                 results.append(new_res)
-            
-            # EAGER RETURN: If we found any results, return them immediately.
-            if results:
-                logger.debug(f"DEBUG: Eagerly returning {len(results)} results at attempt {poll_attempt + 1}")
-                break
-                
-            await asyncio.sleep(2)
         
         logger.debug(f"DEBUG: Total results aggregated: {len(results)}")
         
