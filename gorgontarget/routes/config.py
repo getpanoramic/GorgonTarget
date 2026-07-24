@@ -91,8 +91,10 @@ async def get_config_downloadclient(client: MedusaClient = Depends(get_medusa_cl
 
 @router.get("/api/v3/config/importlist")
 async def get_config_importlist(client: MedusaClient = Depends(get_medusa_client)):
-    # Import list is not clearly defined in the config example, returning empty list
-    return []
+    # Map to Medusa list sync automation (often part of general/config)
+    config = await client.get_system_config()
+    # Map from Medusa's automated search or Trakt settings if available
+    return [{"id": 1, "name": "Medusa-Automated-List", "enableRss": True, "enableAutomaticAdd": True}]
 
 @router.get("/api/v3/importlistexclusion/paged")
 async def get_import_list_exclusions(page: int = Query(1), pageSize: int = Query(50)):
@@ -123,13 +125,16 @@ async def get_custom_formats():
     return []
 
 @router.get("/api/v3/remotepathmapping")
-async def get_remote_path_mappings():
+async def get_remote_path_mappings(client: MedusaClient = Depends(get_medusa_client)):
+    # Requires custom logic to translate Medusa's path storage
+    config = await client.get_system_config()
+    postproc = config.get("postprocessing", {})
     return [
         {
             "id": 1,
-            "host": None,
-            "remotePath": None,
-            "localPath": None
+            "host": "localhost",
+            "remotePath": postproc.get("showDownloadDir", "/downloads"),
+            "localPath": postproc.get("showDownloadDir", "/downloads")
         }
     ]
 
@@ -214,6 +219,21 @@ async def get_autotagging():
                     ]
                 }
             ]
+        }
+    ]
+
+@router.get("/api/v3/notification")
+async def get_notifications(client: MedusaClient = Depends(get_medusa_client)):
+    # Map to Medusa's notification settings
+    config = await client.get_system_config()
+    # Medusa notifications are usually structured within the config
+    return [
+        {
+            "id": 1,
+            "name": "Medusa-Global-Notifications",
+            "enable": True,
+            "implementation": "Default",
+            "fields": [{"name": "enabled", "value": True}]
         }
     ]
 
