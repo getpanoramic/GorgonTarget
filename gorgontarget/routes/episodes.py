@@ -47,7 +47,7 @@ async def get_episodes(
 
     translated_episodes = []
     for ep in medusa_episodes:
-        episode = MedusaTranslator.to_sonarr_episode(ep, target_id).dict()
+        episode = MedusaTranslator.to_sonarr_episode(ep, target_id)
         if not includeEpisodeFile:
             episode.pop("episodeFile", None)
         translated_episodes.append(episode)
