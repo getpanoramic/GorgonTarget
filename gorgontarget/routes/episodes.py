@@ -151,10 +151,10 @@ async def get_episode_files(
             "id": ep_id,
             "seriesId": target_id,
             "seasonNumber": int(ep.get("season", 0)),
-            "episodeIds": [ep_id], # Added missing field
+            "episodeIds": [ep_id],
             "relativePath": location if location and isinstance(location, str) and location.strip() else None,
             "path": location if location and isinstance(location, str) and location.strip() else None,
-            "size": file_node.get("size") if isinstance(file_node, dict) else parse_medusa_size(ep.get("size", "0 B")),
+            "size": parse_medusa_size(file_node.get("size", "0 B")) if isinstance(file_node, dict) else parse_medusa_size(ep.get("size", "0 B")),
             "dateAdded": ep.get("date", "2026-01-01T00:00:00Z"),
             "quality": {
                 "quality": {"id": 1, "name": "HDTV-1080p", "source": "hdtv", "resolution": 1080},
