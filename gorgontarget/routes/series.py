@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Request, Query, HTTPException
-from typing import Optional
+from typing import Optional, List
 from ..utils import async_client, get_medusa_key, medusa_headers, extract_clean_integer_id, extract_clean_year, build_sonarr_images, apply_absolute_urls, logger, SERIES_ID_MAP
 from ..models import SonarrAddSeries
 from ..cache import series_map_cache

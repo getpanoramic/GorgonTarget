@@ -216,3 +216,60 @@ async def get_autotagging():
             ]
         }
     ]
+
+@router.get("/api/v3/qualityprofile")
+async def get_quality_profiles(client: MedusaClient = Depends(get_medusa_client)):
+    config = await client.get_system_config()
+    search = config.get("search", {})
+    # Map Medusa's search ignored/preferred words to a default quality profile
+    return [
+        {
+            "id": 1,
+            "name": "Medusa-Mapped Profile",
+            "upgradeAllowed": False,
+            "cutoff": 1,
+            "items": [
+                {"quality": {"id": 1, "name": "HDTV-720p", "source": "hdtv", "resolution": 720}, "allowed": True},
+                {"quality": {"id": 2, "name": "HDTV-1080p", "source": "hdtv", "resolution": 1080}, "allowed": True}
+            ]
+        }
+    ]
+
+@router.get("/api/v3/naming")
+async def get_naming(client: MedusaClient = Depends(get_medusa_client)):
+    config = await client.get_system_config()
+    naming = config.get("postprocessing", {})
+    return {
+        "renameEpisodes": True,
+        "replaceIllegalCharacters": True,
+        "multiEpisodeStyle": 0,
+        "standardEpisodeFormat": naming.get("pattern", "{Series Title} - S{season:02}E{episode:02} - {Episode Title}"),
+        "dailyEpisodeFormat": naming.get("patternAirByDate", "{Series Title} - {Air-Date} - {Episode Title}"),
+        "animeEpisodeFormat": naming.get("patternAnime", "{Series Title} - S{season:02}E{episode:02} - {Episode Title}"),
+        "seriesFolderFormat": "{Series Title}",
+        "seasonFolderFormat": "Season {season:02}",
+        "specialsFolderFormat": "Specials"
+    }
+
+@router.get("/api/v3/delayprofile")
+async def get_delay_profiles(client: MedusaClient = Depends(get_medusa_client)):
+    config = await client.get_system_config()
+    search = config.get("search", {})
+    return [
+        {
+            "id": 1,
+            "enableUsenet": True,
+            "enableTorrent": True,
+            "usenetDelay": 0,
+            "torrentDelay": search.get("backlogDays", 0),
+            "order": 1
+        }
+    ]
+
+@router.get("/api/v3/tag")
+async def get_tags():
+    # Return default system tags
+    return [
+        {"id": 1, "label": "medusa-managed"},
+        {"id": 2, "label": "auto-imported"}
+    ]

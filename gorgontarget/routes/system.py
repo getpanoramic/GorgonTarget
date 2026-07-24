@@ -563,35 +563,33 @@ async def download_logs(api_key: str = Depends(get_medusa_key)):
 
 @router.get("/api/v3/qualityprofile")
 async def get_quality_profiles(api_key: str = Depends(get_medusa_key)):
-    return [
-        {"id": 1, "name": "Medusa Managed Profile", "upgradeAllowed": False, "cutoff": 1, "items": []},
-        {"id": 2, "name": "HD - 720p/1080p", "upgradeAllowed": False, "cutoff": 2, "items": []}
-    ]
-
-@router.get("/api/v3/rootfolder")
-async def get_root_folders(api_key: str = Depends(get_medusa_key)):
+    # Fetch search configuration to populate profiles
     client = MedusaClient(api_key)
     config = await client.get_system_config()
-    disk_space = config.get("diskSpace", {})
-    root_dirs = disk_space.get("rootDir", [])
+    search = config.get("search", {})
     
-    output = []
-    for i, d in enumerate(root_dirs):
-        free_bytes = parse_medusa_size(d.get("freeSpace", "0 GB"))
-        output.append({
-            "id": i + 1,
-            "path": d.get("location"),
-            "accessible": True,
-            "freeSpace": free_bytes,
-            "unmappedFolders": []
-        })
-    return output
+    # Map Medusa's search ignored/preferred words to a default quality profile
+    return [
+        {
+            "id": 1,
+            "name": "Medusa-Mapped Profile",
+            "upgradeAllowed": False,
+            "cutoff": 1,
+            "items": [
+                {"quality": {"id": 1, "name": "HDTV-720p", "source": "hdtv", "resolution": 720}, "allowed": True},
+                {"quality": {"id": 2, "name": "HDTV-1080p", "source": "hdtv", "resolution": 1080}, "allowed": True}
+            ]
+        }
+    ]
 
 @router.get("/api/v3/tag")
 async def get_tags(api_key: str = Depends(get_medusa_key)):
-    # Medusa doesn't have a direct equivalent to Sonarr tags.
-    # Return a default empty list or minimal mapping to satisfy the UI requirement.
-    return []
+    # Medusa doesn't have native tags. 
+    # Return a set of default tags that Sonarr-compatible apps expect.
+    return [
+        {"id": 1, "label": "medusa-managed"},
+        {"id": 2, "label": "auto-imported"}
+    ]
 
 @router.get("/api/v3/languageprofile")
 async def get_language_profiles(api_key: str = Depends(get_medusa_key)):
