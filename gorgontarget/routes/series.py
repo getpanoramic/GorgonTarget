@@ -103,6 +103,11 @@ async def core_all_series(api_key: str):
     await series_list_cache.set("all_series", sonarr_shows)
     return sonarr_shows
 
+@router.get("/api/series/")
+@router.get("/api/v3/series/")
+async def get_all_series_trailing_slash(request: Request, api_key: str = Depends(get_medusa_key)):
+    return await get_all_series_v2(request, api_key)
+
 @router.get("/api/series")
 @router.get("/api/v3/series")
 async def get_all_series_v2(request: Request, api_key: str = Depends(get_medusa_key)):
