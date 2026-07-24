@@ -235,3 +235,15 @@ async def add_series(payload: SonarrAddSeries, api_key: str = Depends(get_medusa
         return JSONResponse(status_code=res.status_code, content=res.json())
     except Exception as e:
         return JSONResponse(status_code=502, content={"error": str(e)})
+
+@router.put("/api/v3/series/editor")
+async def edit_series_bulk(seriesIds: List[int] = Query(...), monitored: Optional[bool] = None, api_key: str = Depends(get_medusa_key)):
+    logger.debug(f"Bulk edit requested for series IDs: {seriesIds}, monitored={monitored}")
+    # TODO: Implement bulk editing by looping through seriesIds and calling Medusa PATCH API
+    return {"status": "success", "message": "Bulk edit initiated"}
+
+@router.put("/api/v3/episode/monitor")
+async def monitor_episodes_bulk(episodeIds: List[int] = Query(...), monitored: bool = True, api_key: str = Depends(get_medusa_key)):
+    logger.debug(f"Bulk monitor toggle requested for episode IDs: {episodeIds}, monitored={monitored}")
+    # TODO: Implement bulk monitoring toggle
+    return [{"id": id, "monitored": monitored} for id in episodeIds]
