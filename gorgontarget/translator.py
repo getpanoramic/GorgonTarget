@@ -180,14 +180,14 @@ class MedusaTranslator:
             episode.episodeFile = {
                 "id": ep_id, 
                 "seriesId": series_id, 
-                "size": file_size,
-                "path": location or "/unknown/path",
-                "relativePath": location or "/unknown/path",
+                "size": int(file_size), # Force integer
+                "path": str(location or "/unknown/path"), # Force string
+                "relativePath": str(location or "unknown/path"), # Force string
                 "dateAdded": medusa_ep.get("date", "2026-01-01T00:00:00Z"),
                 "quality": {
                     "quality": {
                         "id": 1,
-                        "name": str(medusa_ep.get("quality", "HDTV-1080p")), 
+                        "name": str(medusa_ep.get("quality", "128")),
                         "source": "hdtv",
                         "resolution": 1080
                     },
