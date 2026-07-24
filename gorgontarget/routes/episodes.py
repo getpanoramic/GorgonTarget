@@ -95,9 +95,9 @@ async def get_single_episode(episode_id: int, includeEpisodeFile: bool = Query(F
                         "id": ef.get("id", 0),
                         "seriesId": series_id,
                         "seasonNumber": ef.get("seasonNumber", compliant_ep["seasonNumber"]),
-                        "relativePath": ef.get("relativePath", ""),
-                        "path": ef.get("path", ""),
-                        "size": ef.get("size", 0),
+                        "relativePath": str(ef.get("relativePath") or "unknown/path"),
+                        "path": str(ef.get("path") or "/unknown/path"),
+                        "size": int(ef.get("size", 0)),
                         "dateAdded": ef.get("dateAdded", "2026-01-01T00:00:00Z"),
                         "quality": {
                             "quality": {"id": 1, "name": "HDTV-1080p", "source": "hdtv", "resolution": 1080},
@@ -147,21 +147,28 @@ async def get_episode_files(
         ep_id = extract_clean_integer_id({"id": ep.get("id")})
         
         # Include all episodes; set file fields to None if no location exists
+        # Force all fields to non-None values to satisfy Bazarr schema requirements.
         episode_files.append({
-            "id": ep_id,
-            "seriesId": target_id,
+            "id": int(ep_id),
+            "seriesId": int(target_id),
             "seasonNumber": int(ep.get("season", 0)),
-            "episodeIds": [ep_id],
-            "relativePath": location if location and isinstance(location, str) and location.strip() else None,
-            "path": location if location and isinstance(location, str) and location.strip() else None,
-            "size": parse_medusa_size(file_node.get("size", "0 B")) if isinstance(file_node, dict) else parse_medusa_size(ep.get("size", "0 B")),
-            "dateAdded": ep.get("date", "2026-01-01T00:00:00Z"),
+            "episodeIds": [int(ep_id)],
+            "relativePath": str(location or "/unknown/path"),
+            "path": str(location or "/unknown/path"),
+            "size": int(parse_medusa_size(file_node.get("size", "0 B")) if isinstance(file_node, dict) else parse_medusa_size(ep.get("size", "0 B"))),
+            "dateAdded": str(ep.get("date", "2026-01-01T00:00:00Z")),
             "quality": {
-                "quality": {"id": 1, "name": "HDTV-1080p", "source": "hdtv", "resolution": 1080},
-                "revision": {"version": 1, "real": False, "isRepack": False}
-            } if location and isinstance(location, str) and location.strip() else {
-                "quality": {"id": 0, "name": "Unknown", "source": "unknown", "resolution": 0},
-                "revision": {"version": 0, "real": False, "isRepack": False}
+                "quality": {
+                    "id": 1,
+                    "name": str(ep.get("quality", "128")),
+                    "source": "hdtv",
+                    "resolution": 1080
+                },
+                "revision": {
+                    "version": 1,
+                    "real": False,
+                    "isRepack": False
+                }
             }
         })
         

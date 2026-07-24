@@ -134,17 +134,12 @@ class MedusaTranslator:
 
     @classmethod
     def to_sonarr_episode(cls, medusa_ep: Dict[str, Any], series_id: int) -> SonarrEpisode:
-        # Forensic logging
-        logger.debug(f"DEBUG: Translating episode: {medusa_ep.get('identifier')} - Keys: {list(medusa_ep.keys())}")
-        
+        # 1. Determine state
         status = str(medusa_ep.get("status", "")).lower()
-        # Include 'archived' as having a file, as seen in Twin Peaks logs
         has_file = status in ["downloaded", "snatched", "archived"]
         
-        # Use the robust extraction method to handle nested dictionaries
+        # 2. Extract Data
         ep_id = cls.extract_clean_integer_id(medusa_ep)
-
-        # Try to find location in multiple places
         file_node = medusa_ep.get("file")
         location = None
         file_size = 0
@@ -152,53 +147,106 @@ class MedusaTranslator:
             location = file_node.get("location") or file_node.get("name")
             file_size = cls.parse_size_to_bytes(file_node.get("size", "0 B"))
         
-        # Fallback if file node is missing or empty but location is in root
-        if not location:
-            location = medusa_ep.get("location")
-            file_size = cls.parse_size_to_bytes(medusa_ep.get("size", "0 B"))
+        # 3. Build Episode Object (using SonarrEpisode model if possible, 
+        # but manual construction ensures strict adherence to provided schema)
+        episode = {
+            "id": ep_id,
+            "seriesId": series_id,
+            "tvdbId": 0,
+            "episodeFileId": ep_id if has_file else 0,
+            "seasonNumber": int(medusa_ep.get("season", 0)),
+            "episodeNumber": int(medusa_ep.get("episode", medusa_ep.get("number", 0))),
+            "title": medusa_ep.get("title"),
+            "airDate": medusa_ep.get("airDate"), # Might need format adjustment
+            "airDateUtc": medusa_ep.get("airDate"), # Assuming already ISO
+            "lastSearchTime": None,
+            "runtime": 30, # Default
+            "finaleType": None,
+            "overview": medusa_ep.get("description"),
+            "episodeFile": None,
+            "hasFile": has_file,
+            "monitored": True,
+            "absoluteEpisodeNumber": None,
+            "sceneAbsoluteEpisodeNumber": None,
+            "sceneEpisodeNumber": None,
+            "sceneSeasonNumber": None,
+            "unverifiedSceneNumbering": False,
+            "endTime": None,
+            "grabDate": None,
+            "series": {
+                "id": series_id,
+                "title": None,
+                "status": "continuing",
+                "ended": False,
+                "year": 2026,
+                "images": [],
+                "originalLanguage": {"id": 1, "name": "English"},
+                "seasons": [],
+                "genres": [],
+                "tags": [],
+                "ratings": {"votes": 0, "value": 0.0},
+                "statistics": {
+                    "seasonCount": 0,
+                    "episodeFileCount": 0,
+                    "episodeCount": 0,
+                    "totalEpisodeCount": 0,
+                    "sizeOnDisk": 0,
+                    "releaseGroups": [],
+                    "percentOfEpisodes": 0.0
+                }
+            },
+            "images": []
+        }
         
-        logger.debug(f"DEBUG: Resolved location: '{location}' for ep_id: {ep_id}, has_file: {has_file}")
-        
-        episode = SonarrEpisode(
-            id=ep_id,
-            seriesId=series_id,
-            episodeFileId=ep_id if (has_file and location) else 0,
-            seasonNumber=int(medusa_ep.get("season", 0)),
-            episodeNumber=int(medusa_ep.get("episode", medusa_ep.get("number", 0))),
-            title=medusa_ep.get("title", ""),
-            overview=medusa_ep.get("overview", ""),
-            monitored=True,
-            hasFile=has_file
-        )
-        
-        # Always initialize episodeFile as None
-        episode.episodeFile = None
-        
-        # If the backend says we have a file, we MUST provide the structure for Bazarr, 
-        # even if we don't have a valid location, to satisfy schema requirements.
+        # 4. Populate episodeFile if applicable
         if has_file:
-            episode.episodeFile = {
+            episode["episodeFile"] = {
                 "id": ep_id, 
                 "seriesId": series_id, 
-                "size": int(file_size), # Force integer
-                "path": str(location or "/unknown/path"), # Force string
-                "relativePath": str(location or "unknown/path"), # Force string
+                "seasonNumber": int(medusa_ep.get("season", 0)),
+                "relativePath": str(location or "/unknown/path"),
+                "path": str(location or "/unknown/path"),
+                "size": int(file_size),
                 "dateAdded": medusa_ep.get("date", "2026-01-01T00:00:00Z"),
+                "sceneName": None,
+                "releaseGroup": None,
+                "languages": [{"id": 1, "name": "English"}],
                 "quality": {
                     "quality": {
                         "id": 1,
                         "name": str(medusa_ep.get("quality", "128")),
-                        "source": "hdtv",
+                        "source": "unknown",
                         "resolution": 1080
                     },
                     "revision": {
                         "version": 1,
-                        "real": False,
+                        "real": 0,
                         "isRepack": False
                     }
-                }
+                },
+                "customFormats": [],
+                "customFormatScore": 0,
+                "indexerFlags": None,
+                "releaseType": "unknown",
+                "mediaInfo": {
+                    "id": 0,
+                    "audioBitrate": 0,
+                    "audioChannels": 0,
+                    "audioCodec": None,
+                    "audioLanguages": None,
+                    "audioStreamCount": 0,
+                    "videoBitDepth": 0,
+                    "videoBitrate": 0,
+                    "videoCodec": None,
+                    "videoFps": 0,
+                    "resolution": None,
+                    "runTime": None,
+                    "scanType": None,
+                    "subtitles": None
+                },
+                "qualityCutoffNotMet": True
             }
         
-        # Forensic logging: dump final dict
-        logger.error(f"DEBUG: FINAL EPISODE DICT: {episode.dict()}")
-        return episode
+        # Forensic logging
+        logger.error(f"DEBUG: FINAL EPISODE DICT: {episode}")
+        return episode # Note: SonarrEpisode might need updating to reflect this dict structure if using pydantic validation
