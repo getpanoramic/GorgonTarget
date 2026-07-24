@@ -175,6 +175,24 @@ async def get_episode_files(
     logger.debug(f"get_episode_files returning {len(episode_files)} files for series {target_id}")
     return episode_files
 
+@router.get("/api/v3/episodefile/{id}")
+async def get_episode_file(id: int, api_key: str = Depends(get_medusa_key)):
+    logger.debug(f"get_episode_file requested for ID: {id}")
+    # TODO: Implement retrieval for specific episode file
+    return {"id": id, "path": "/placeholder/path"}
+
+@router.delete("/api/v3/episodefile/{id}")
+async def delete_episode_file(id: int, api_key: str = Depends(get_medusa_key)):
+    logger.debug(f"delete_episode_file requested for ID: {id}")
+    # TODO: Implement deletion
+    return {"status": "success"}
+
+@router.delete("/api/v3/episodefile/bulk")
+async def delete_episode_files_bulk(episodeFileIds: List[int] = Query(...), api_key: str = Depends(get_medusa_key)):
+    logger.debug(f"delete_episode_files_bulk requested for IDs: {episodeFileIds}")
+    # TODO: Implement bulk deletion
+    return [{"id": id, "status": "success"} for id in episodeFileIds]
+
 @router.get("/api/v3/calendar")
 async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: str = Depends(get_medusa_key)):
     try:

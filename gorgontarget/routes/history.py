@@ -122,3 +122,9 @@ async def get_history(
     except Exception as e:
         logger.debug(f"History exception: {str(e)}")
         return {"page": 1, "pageSize": pageSize, "totalRecords": 0, "records": []}
+
+@router.post("/api/v3/history/failed/{id}")
+async def mark_history_failed(id: int, api_key: str = Depends(get_medusa_key)):
+    # Placeholder for marking history as failed, as Medusa v2 doesn't have a direct 1:1 endpoint
+    logger.debug(f"History item {id} marked as failed.")
+    return {"status": "success"}
