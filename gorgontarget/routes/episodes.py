@@ -30,8 +30,8 @@ async def get_episodes(
             s_id = series_ids[i]
             for ep in medusa_episodes:
                 translated = MedusaTranslator.to_sonarr_episode(ep, s_id)
-                if translated.id in episodeIds:
-                    episode_dict = translated.dict()
+                if translated["id"] in episodeIds:
+                    episode_dict = translated
                     if not includeEpisodeFile:
                         episode_dict.pop("episodeFile", None)
                     all_translated_episodes.append(episode_dict)
@@ -69,8 +69,8 @@ async def get_single_episode(episode_id: int, includeEpisodeFile: bool = Query(F
         series_id = series_ids[i]
         for ep in episodes:
             translated = MedusaTranslator.to_sonarr_episode(ep, series_id)
-            if translated.id == episode_id:
-                ep_dict = translated.dict()
+            if translated["id"] == episode_id:
+                ep_dict = translated
                 
                 compliant_ep = {
                     "id": ep_dict.get("id", episode_id),
