@@ -21,7 +21,7 @@ def test_translator_to_sonarr_series():
         "year": 2026
     }
     series = MedusaTranslator.to_sonarr_series(medusa_show)
-    assert isinstance(series, SonarrSeries)
-    assert series.title == "Test Show"
-    assert series.tvdbId == 100
-    assert series.year == 2026
+    assert isinstance(series, dict)
+    assert series["title"] == "Test Show"
+    assert series["tvdbId"] == 100
+    assert series["year"] == 2026
