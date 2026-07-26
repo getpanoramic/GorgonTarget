@@ -63,7 +63,7 @@ class MedusaTranslator:
             return 0
 
     @classmethod
-    def to_sonarr_series(cls, medusa_show: Dict[str, Any], api_key: str = "") -> SonarrSeries:
+    def to_sonarr_series(cls, medusa_show: Dict[str, Any], api_key: str = "") -> Dict[str, Any]:
         ids = medusa_show.get("ids", {})
         medusa_id = cls.extract_clean_integer_id(medusa_show)
         title = medusa_show.get("title", f"Series {medusa_id}")
@@ -83,12 +83,16 @@ class MedusaTranslator:
                 "seasonNumber": int(s.get("season", 0)),
                 "monitored": True,
                 "statistics": {
+                    "nextAiring": None,
+                    "previousAiring": None,
                     "episodeFileCount": ep_count,
                     "episodeCount": ep_count,
                     "totalEpisodeCount": ep_count,
                     "sizeOnDisk": season_size,
-                    "percentOfEpisodes": 100.0
-                }
+                    "percentOfEpisodes": 100.0,
+                    "releaseGroups": []
+                },
+                "images": []
             })
 
         total_size_on_disk = sum(cls.parse_size_to_bytes(s.get("size", "0 B")) for s in seasons_data)
@@ -99,38 +103,40 @@ class MedusaTranslator:
         if isinstance(imdb_val, int):
             imdb_val = f"tt{imdb_val:07d}"
         
-        return SonarrSeries(
-            id=medusa_id,
-            title=title,
-            tvdbId=int(ids.get("tvdb") or medusa_show.get("externals", {}).get("tvdb") or 0),
-            tmdbId=int(ids.get("tmdb") or medusa_show.get("externals", {}).get("tmdb") or 0),
-            imdbId=str(imdb_val),
-            sortTitle=title.lower(),
-            status="continuing" if medusa_show.get("status", "").lower() == "continuing" else "ended",
-            overview=medusa_show.get("plot", medusa_show.get("overview", "")),
-            year=cls.extract_clean_year(medusa_show),
-            path=medusa_show.get("config", {}).get("location", f"/tv/{title}"),
-            monitored=not medusa_show.get("paused", False),
-            images=[
+        return {
+            "id": medusa_id,
+            "title": title,
+            "tvdbId": int(ids.get("tvdb") or medusa_show.get("externals", {}).get("tvdb") or 0),
+            "tmdbId": int(ids.get("tmdb") or medusa_show.get("externals", {}).get("tmdb") or 0),
+            "imdbId": str(imdb_val),
+            "sortTitle": title.lower(),
+            "status": "continuing" if medusa_show.get("status", "").lower() == "continuing" else "ended",
+            "overview": medusa_show.get("plot", medusa_show.get("overview", "")),
+            "year": cls.extract_clean_year(medusa_show),
+            "path": medusa_show.get("config", {}).get("location", f"/tv/{title}"),
+            "monitored": not medusa_show.get("paused", False),
+            "images": [
                 {"coverType": "poster", "url": f"/api/v3/mediacover/{medusa_id}/poster-500.jpg{key_param}", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/poster-500.jpg{key_param}"},
                 {"coverType": "banner", "url": f"/api/v3/mediacover/{medusa_id}/banner-500.jpg{key_param}", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/banner-500.jpg{key_param}"},
                 {"coverType": "fanart", "url": f"/api/v3/mediacover/{medusa_id}/fanart-500.jpg{key_param}", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/fanart-500.jpg{key_param}"}
             ],
-            remotePoster=f"/api/v3/mediacover/{medusa_id}/poster-500.jpg{key_param}",
-            seasons=seasons,
-            statistics={
+            "remotePoster": f"/api/v3/mediacover/{medusa_id}/poster-500.jpg{key_param}",
+            "seasons": seasons,
+            "statistics": {
+                "seasonCount": len(seasons),
                 "episodeFileCount": total_episodes,
                 "episodeCount": total_episodes,
                 "totalEpisodeCount": total_episodes,
                 "sizeOnDisk": total_size_on_disk,
                 "percentOfEpisodes": percent_downloaded
             },
-            network=medusa_show.get("network", "Unknown"),
-            genres=medusa_show.get("genres", []),
-            ratings={"votes": 0, "value": float(medusa_show.get("rating") if isinstance(medusa_show.get("rating"), (int, float, str)) else 0.0)},
-            certification=medusa_show.get("certification", None),
-            tags=[]
-        )
+            "network": medusa_show.get("network", "Unknown"),
+            "genres": medusa_show.get("genres", []),
+            "ratings": {"votes": 0, "value": float(medusa_show.get("rating") if isinstance(medusa_show.get("rating"), (int, float, str)) else 0.0)},
+            "certification": medusa_show.get("certification", None),
+            "tags": [],
+            "added": "2026-01-01T00:00:00Z"
+        }
 
     @classmethod
     def to_sonarr_episode(cls, medusa_ep: Dict[str, Any], series_id: int) -> SonarrEpisode:
