@@ -98,12 +98,12 @@ async def core_all_series(api_key: str):
         series_obj = MedusaTranslator.to_sonarr_series(show, api_key=api_key)
         
         # Validation: Ensure critical fields exist
-        if not series_obj.title:
+        if not series_obj.get("title"):
             logger.error(f"DEBUG: Found show with None title: {show}")
-            series_obj.title = "Unknown Show"
+            series_obj["title"] = "Unknown Show"
             
-        logger.debug(f"Translating show: {series_obj.title}, images: {series_obj.images}")
-        sonarr_shows.append(series_obj.dict())
+        logger.debug(f"Translating show: {series_obj.get('title')}, images: {series_obj.get('images')}")
+        sonarr_shows.append(series_obj)
 
     logger.debug(f"OUTBOUND DATASET: Sent {len(sonarr_shows)} series objects with full image specifications.")
     await series_list_cache.set("all_series", sonarr_shows)
