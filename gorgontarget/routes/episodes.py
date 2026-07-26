@@ -208,7 +208,6 @@ async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: 
             return []
             
         data = res.json()
-        logger.debug(f"DEBUG: Medusa Calendar raw data keys: {data.keys()}")
         
         # Combine all calendar categories (excluding 'missed')
         combined = data.get("today", []) + data.get("soon", []) + data.get("later", [])
@@ -228,23 +227,68 @@ async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: 
             series_id = int(item.get("tvdbid") or extract_id_from_str(item.get("showSlug", "0")) or 0)
             episode_id = int(extract_id_from_str(f"{series_id}{item.get('season', 0)}{item.get('episode', 0)}") or 0)
             
-            records.append({
+            # Construct comprehensive CalendarResource (mirrors EpisodeResource)
+            record = {
                 "id": episode_id,
                 "seriesId": series_id,
+                "tvdbId": 0,
+                "episodeFileId": 0,
                 "seasonNumber": item.get("season"),
                 "episodeNumber": item.get("episode"),
                 "title": item.get("epName", "Unknown Episode"),
+                "airDate": airdate_str,
                 "airDateUtc": airdate_str,
                 "hasFile": False,
                 "monitored": True,
+                "runtime": 30,
                 "series": {
                     "id": series_id,
                     "title": item.get("showName", "Unknown"),
                     "status": item.get("showStatus", "continuing").lower(),
-                    "images": build_sonarr_images(series_id)
+                    "ended": False,
+                    "profileName": "Medusa Profile",
+                    "overview": "",
+                    "network": "Medusa",
+                    "images": build_sonarr_images(series_id, api_key),
+                    "originalLanguage": {"id": 1, "name": "English"},
+                    "year": 2026,
+                    "path": "/tv",
+                    "qualityProfileId": 1,
+                    "seasonFolder": True,
+                    "monitored": True,
+                    "monitorNewItems": "all",
+                    "useSceneNumbering": False,
+                    "runtime": 30,
+                    "tvdbId": series_id,
+                    "tvRageId": 0,
+                    "tvMazeId": 0,
+                    "tmdbId": 0,
+                    "seriesType": "standard",
+                    "cleanTitle": "unknown",
+                    "imdbId": None,
+                    "titleSlug": "unknown",
+                    "rootFolderPath": "/tv",
+                    "folder": None,
+                    "certification": None,
+                    "genres": [],
+                    "tags": [],
+                    "added": "2026-01-01T00:00:00Z",
+                    "addOptions": {"ignoreEpisodesWithFiles": True, "ignoreEpisodesWithoutFiles": True, "monitor": "all", "searchForMissingEpisodes": True, "searchForCutoffUnmetEpisodes": True},
+                    "ratings": {"votes": 0, "value": 0.0},
+                    "statistics": {
+                        "seasonCount": 0,
+                        "episodeFileCount": 0,
+                        "episodeCount": 0,
+                        "totalEpisodeCount": 0,
+                        "sizeOnDisk": 0,
+                        "releaseGroups": [],
+                        "percentOfEpisodes": 0.0
+                    },
+                    "episodesChanged": False
                 },
-                "images": build_sonarr_images(series_id)
-            })
+                "images": build_sonarr_images(series_id, api_key)
+            }
+            records.append(record)
             
         return records
     except Exception as e:
@@ -252,13 +296,13 @@ async def get_calendar(start: str = Query(...), end: str = Query(...), api_key: 
         return []
 
 @router.get("/api/v3/wanted/missing")
-async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
+async def get_wanted_missing(page: int = Query(1), pageSize: int = Query(20), api_key: str = Depends(get_medusa_key)):
     try:
         params = {"period": "all", "status": "all"}
         res = await async_client.get("/api/v2/internal/getEpisodeBacklog", params=params, headers=medusa_headers(api_key))
         
         if res.status_code != 200: 
-            return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
+            return {"page": 1, "pageSize": pageSize, "totalRecords": 0, "records": []}
         
         data = res.json()
         
@@ -268,37 +312,30 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
             show_name = show.get("name", "Unknown Show")
             
             for ep in show.get("episodes", []):
-                # Forensic logging: dump raw ep
-                logger.debug(f"DEBUG: FORENSIC RAW EPISODE DATA: {ep}")
-                
-                # Get ID from Medusa, fallback to deterministic hash if 0
                 ep_id = MedusaTranslator.extract_clean_integer_id(ep)
                 if ep_id == 0:
                     ep_key = f"{show.get('slug', '0')}-{ep.get('season', 0)}-{ep.get('episode', 0)}"
                     ep_id = abs(hash(ep_key)) % 100000000
                     if ep_id == 0: ep_id = 1
                 
-                # Populate mapping cache
-                await episode_series_map.set(str(ep_id), series_id)
-                logger.debug(f"DEBUG: Populated cache with key={str(ep_id)}, value={series_id}, title={ep.get('title')}")
-                
-                # Strict NZB360 schema mapping with complete nested structures
+                # Strict Sonarr v3 schema mapping
                 record = {
                     "id": ep_id,
                     "seriesId": series_id,
                     "tvdbId": series_id,
                     "episodeFileId": 0,
-                    "seasonNumber": ep.get("season"),
-                    "episodeNumber": ep.get("episode"),
+                    "seasonNumber": ep.get("season", 0),
+                    "episodeNumber": ep.get("episode", 0),
                     "title": ep.get("name", "Unknown Episode"),
                     "airDate": ep.get("airdate"),
                     "airDateUtc": ep.get("airdate"),
+                    "runtime": 30,
                     "hasFile": False,
                     "monitored": True,
                     "episodeFile": {
                         "id": 0,
                         "seriesId": series_id,
-                        "seasonNumber": ep.get("season"),
+                        "seasonNumber": ep.get("season", 0),
                         "relativePath": None,
                         "path": None,
                         "size": 0,
@@ -335,20 +372,17 @@ async def get_wanted_missing(api_key: str = Depends(get_medusa_key)):
                     },
                     "images": build_sonarr_images(series_id, api_key=api_key)
                 }
-                logger.debug(f"DEBUG: Mapped record: {record}")
                 records.append(record)
         
-        response = {
-            "page": 1, 
-            "pageSize": len(records) or 20, 
-            "totalRecords": len(records), 
+        return {
+            "page": page,
+            "pageSize": pageSize,
+            "totalRecords": len(records),
             "records": records
         }
-        logger.debug(f"DEBUG: Forensic response structure: {response}")
-        return response
     except Exception as e:
         logger.error(f"Wanted missing exception: {str(e)}")
-        return {"page": 1, "pageSize": 20, "totalRecords": 0, "records": []}
+        return {"page": 1, "pageSize": pageSize, "totalRecords": 0, "records": []}
 
 @router.get("/api/v3/wanted/missing/{id}")
 async def get_wanted_missing_by_id(id: int, api_key: str = Depends(get_medusa_key)):
@@ -715,35 +749,38 @@ async def get_queue(page: int = Query(1), pageSize: int = Query(20), api_key: st
         
         records = []
         for item in data.get("queue", []):
-            # Create a placeholder structure compliant with the schema
+            series_id = int(item.get("tvdbid") or extract_id_from_str(item.get("showSlug", "0")) or 0)
+            
+            # Create comprehensive QueueResource compliant with schema
             record = {
                 "id": int(item.get("id", 1)),
-                "seriesId": None,
-                "episodeId": None,
-                "seasonNumber": None,
+                "seriesId": series_id,
+                "episodeId": 1, # Placeholder if epID not available
+                "seasonNumber": item.get("season"),
                 "series": {
-                    "id": 1,
-                    "title": item.get("showName"),
+                    "id": series_id,
+                    "title": item.get("showName", "Unknown"),
                     "status": "continuing",
-                    "images": [],
-                    "year": 2026
+                    "images": build_sonarr_images(series_id, api_key),
+                    "year": 2026,
+                    "path": "/dev/null"
                 },
                 "episode": {
                     "id": 1,
-                    "seriesId": 1,
-                    "seasonNumber": 1,
-                    "episodeNumber": 1,
-                    "title": item.get("epName"),
+                    "seriesId": series_id,
+                    "seasonNumber": item.get("season", 0),
+                    "episodeNumber": item.get("episode", 0),
+                    "title": item.get("epName", "Unknown Episode"),
                     "hasFile": False,
                     "monitored": True,
                     "episodeFile": None,
                     "series": {
-                        "id": 1,
-                        "title": item.get("showName"),
+                        "id": series_id,
+                        "title": item.get("showName", "Unknown"),
                         "status": "continuing",
-                        "images": []
+                        "images": build_sonarr_images(series_id, api_key)
                     },
-                    "images": []
+                    "images": build_sonarr_images(series_id, api_key)
                 },
                 "languages": [{"id": 1, "name": "English"}],
                 "quality": {
@@ -755,7 +792,7 @@ async def get_queue(page: int = Query(1), pageSize: int = Query(20), api_key: st
                 "qualityCutoffNotMet": True,
                 "date": "2026-07-17T00:00:00Z",
                 "size": item.get("size", 0),
-                "title": item.get("epName"),
+                "title": item.get("epName", "Unknown"),
                 "status": "downloading",
                 "trackedDownloadStatus": "ok",
                 "trackedDownloadState": "downloading",
@@ -776,5 +813,14 @@ async def get_queue(page: int = Query(1), pageSize: int = Query(20), api_key: st
 @router.get("/api/v3/queue/status")
 async def get_queue_status(api_key: str = Depends(get_medusa_key)):
     # Medusa doesn't have a direct 'queue/status' endpoint, returning placeholder 
-    # to avoid 404/errors in the client
-    return {"totalCount": 0, "count": 0, "pageSize": 20, "sortKey": "timeleft", "unknownQueueItems": 0, "queued": 0, "downloading": 0, "failed": 0, "errors": False, "warnings": False}
+    # to avoid 404/errors in the client while strictly matching the required schema
+    return {
+        "id": 1,
+        "totalCount": 0,
+        "count": 0,
+        "unknownCount": 0,
+        "errors": False,
+        "warnings": False,
+        "unknownErrors": False,
+        "unknownWarnings": False
+    }
