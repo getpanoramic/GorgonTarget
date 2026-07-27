@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Query
 from typing import List
-from ..utils import get_medusa_key, logger, async_client, medusa_headers, build_sonarr_images, extract_id_from_str
+from ..utils import get_medusa_key, logger, get_async_client, medusa_headers, build_sonarr_images, extract_id_from_str
 from ..models_calendar import CalendarEpisode
+import httpx
 import asyncio
 
 router = APIRouter()
@@ -15,9 +16,21 @@ async def get_calendar(
     includeEpisodeFile: bool = Query(False),
     includeEpisodeImages: bool = Query(False),
     tags: str = Query(None),
-    api_key: str = Depends(get_medusa_key)
+    api_key: str = Depends(get_medusa_key),
+    client: httpx.AsyncClient = Depends(get_async_client)
 ):
     try:
+        # Debugging: check what 'client' is
+        logger.error(f"DEBUG: Calendar 'client' injected: {client!r}")
+        
+        # In case the dependency provider returns a coroutine instead of the client
+        if asyncio.iscoroutine(client):
+            async_client = await client
+        else:
+            async_client = client
+        
+        logger.error(f"DEBUG: Calendar async_client to use: {async_client!r}")
+        
         params = [
             ("category[]", "today"),
             ("category[]", "soon"),
@@ -25,10 +38,6 @@ async def get_calendar(
             ("paused", "true")
         ]
         
-        # In testing environments, patch might replace the object with a Mock that has its own 'get' method.
-        # Ensure we are calling the intended method.
-        logger.error(f"DEBUG: async_client type: {type(async_client)}")
-        logger.error(f"DEBUG: async_client dict: {dir(async_client)}")
         res = await async_client.get("/api/v2/schedule", params=params, headers=medusa_headers(api_key))
         if res.status_code != 200: 
             return []

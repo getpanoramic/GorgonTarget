@@ -54,6 +54,9 @@ logging.getLogger("asyncio").setLevel(logging.WARNING)
 # Shared HTTP client for proxying
 async_client = httpx.AsyncClient(base_url=settings.medusa_url, timeout=settings.timeout)
 
+async def get_async_client() -> httpx.AsyncClient:
+    return async_client
+
 # Global State
 SERIES_ID_MAP = {}
 COMMAND_REGISTRY = {}
