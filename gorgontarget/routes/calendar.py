@@ -4,6 +4,7 @@ from ..utils import get_medusa_key, logger, get_async_client, medusa_headers, bu
 from ..models_calendar import CalendarEpisode
 import httpx
 import asyncio
+from datetime import datetime
 
 router = APIRouter()
 
@@ -20,17 +21,19 @@ async def get_calendar(
     client: httpx.AsyncClient = Depends(get_async_client)
 ):
     try:
-        # Debugging: check what 'client' is
-        logger.error(f"DEBUG: Calendar 'client' injected: {client!r}")
-        
         # In case the dependency provider returns a coroutine instead of the client
         if asyncio.iscoroutine(client):
             async_client = await client
         else:
             async_client = client
         
-        logger.error(f"DEBUG: Calendar async_client to use: {async_client!r}")
-        
+        # Robust date parsing for filtering
+        try:
+            start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+        except ValueError:
+            start_dt, end_dt = None, None
+
         params = [
             ("category[]", "today"),
             ("category[]", "soon"),
@@ -53,16 +56,25 @@ async def get_calendar(
             if not airdate_str:
                 continue
                 
-            # Filter by start/end dates if provided
-            if start and airdate_str < start:
+            # Filter by start/end dates
+            if start_dt and end_dt:
+                try:
+                    airdate_dt = datetime.fromisoformat(airdate_str.replace("Z", "+00:00"))
+                    if airdate_dt < start_dt or airdate_dt > end_dt:
+                        continue
+                except ValueError:
+                    # Fallback to string comparison if parsing fails
+                    if airdate_str < start or airdate_str > end:
+                        continue
+            elif start and airdate_str < start:
                 continue
-            if end and airdate_str > end:
+            elif end and airdate_str > end:
                 continue
                 
             series_id = int(item.get("tvdbid") or extract_id_from_str(item.get("showSlug", "0")) or 0)
             episode_id = int(extract_id_from_str(f"{series_id}{item.get('season', 0)}{item.get('episode', 0)}") or 0)
             
-            # Construct comprehensive CalendarResource (mirrors EpisodeResource)
+        # Construct comprehensive CalendarResource (mirrors EpisodeResource)
             record = {
                 "id": episode_id,
                 "seriesId": series_id,
@@ -93,6 +105,7 @@ async def get_calendar(
             }
             records.append(record)
             
+        logger.debug(f"DEBUG: Calendar records: {records}")
         return records
     except Exception as e:
         logger.error(f"Calendar exception: {str(e)}")
