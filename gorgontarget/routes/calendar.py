@@ -43,17 +43,20 @@ async def get_calendar(
             ("category[]", "today"),
             ("category[]", "soon"),
             ("category[]", "later"),
+            ("category[]", "missed"),
             ("paused", "true")
         ]
         
         res = await async_client.get("/api/v2/schedule", params=params, headers=medusa_headers(api_key))
         if res.status_code != 200: 
+            logger.error(f"Calendar fetch failed: {res.status_code} - {res.text}")
             return []
             
         data = res.json()
+        logger.debug(f"DEBUG: Calendar raw data keys: {list(data.keys())}")
         
-        # Combine all calendar categories (excluding 'missed')
-        combined = data.get("today", []) + data.get("soon", []) + data.get("later", [])
+        # Combine all calendar categories (including 'missed')
+        combined = data.get("today", []) + data.get("soon", []) + data.get("later", []) + data.get("missed", [])
         
         records = []
         for item in combined:
