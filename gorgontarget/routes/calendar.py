@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from typing import List
-from ..utils import get_medusa_key, logger, get_async_client, medusa_headers, build_sonarr_images, extract_id_from_str
+from ..utils import get_medusa_key, logger, get_async_client, medusa_headers, build_sonarr_images, extract_id_from_str, generate_deterministic_id
 from ..models_calendar import CalendarEpisode
 import httpx
 import asyncio
@@ -80,7 +80,8 @@ async def get_calendar(
                 continue
                 
             series_id = int(item.get("tvdbid") or extract_id_from_str(item.get("showSlug", "0")) or 0)
-            episode_id = int(extract_id_from_str(f"{series_id}{item.get('season', 0)}{item.get('episode', 0)}") or 0)
+            # Use deterministic hash based on unique components to avoid collisions
+            episode_id = generate_deterministic_id(f"{series_id}_{item.get('season', 0)}_{item.get('episode', 0)}")
 
             # Construct comprehensive CalendarResource (mirrors EpisodeResource)
             record = {

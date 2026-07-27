@@ -176,3 +176,10 @@ def map_event_type(status: str) -> int:
         "Failed": 10
     }
     return mapping.get(status, 1)
+
+def generate_deterministic_id(input_str: str) -> int:
+    """Generates a deterministic 32-bit signed integer ID from a string."""
+    import hashlib
+    hash_val = hashlib.md5(input_str.encode('utf-8')).hexdigest()
+    # Use first 8 hex chars (32 bits) to form an integer
+    return int(hash_val[:8], 16) & 0x7FFFFFFF
