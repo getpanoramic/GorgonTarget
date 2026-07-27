@@ -24,6 +24,11 @@ async def get_calendar(
             ("category[]", "later"),
             ("paused", "true")
         ]
+        
+        # In testing environments, patch might replace the object with a Mock that has its own 'get' method.
+        # Ensure we are calling the intended method.
+        logger.error(f"DEBUG: async_client type: {type(async_client)}")
+        logger.error(f"DEBUG: async_client dict: {dir(async_client)}")
         res = await async_client.get("/api/v2/schedule", params=params, headers=medusa_headers(api_key))
         if res.status_code != 200: 
             return []
