@@ -286,6 +286,24 @@ async def get_delay_profiles(client: MedusaClient = Depends(get_medusa_client)):
         }
     ]
 
+@router.get("/api/v3/qualityprofile")
+async def get_quality_profiles(client: MedusaClient = Depends(get_medusa_client)):
+    config = await client.get_system_config()
+    search = config.get("search", {})
+    # Map Medusa's search ignored/preferred words to a default quality profile
+    return [
+        {
+            "id": 1,
+            "name": "Medusa-Mapped Profile",
+            "upgradeAllowed": False,
+            "cutoff": 1,
+            "items": [
+                {"quality": {"id": 1, "name": "HDTV-720p", "source": "hdtv", "resolution": 720}, "allowed": True},
+                {"quality": {"id": 2, "name": "HDTV-1080p", "source": "hdtv", "resolution": 1080}, "allowed": True}
+            ]
+        }
+    ]
+
 @router.get("/api/v3/tag")
 async def get_tags():
     # Return default system tags
@@ -293,3 +311,32 @@ async def get_tags():
         {"id": 1, "label": "medusa-managed"},
         {"id": 2, "label": "auto-imported"}
     ]
+
+@router.get("/api/v3/languageprofile")
+async def get_language_profiles(client: MedusaClient = Depends(get_medusa_client)):
+    config = await client.get_system_config()
+    subtitles = config.get("subtitles", {})
+    wanted_langs = subtitles.get("wantedLanguages", [])
+    
+    # Map Medusa's wantedLanguages to the requested schema
+    languages = []
+    for i, lang in enumerate(wanted_langs):
+        languages.append({
+            "id": i + 1,
+            "language": {
+                "id": i + 1,
+                "name": lang.get("name")
+            },
+            "allowed": True
+        })
+        
+    return [{
+        "id": 1,
+        "name": "Default Language Profile",
+        "upgradeAllowed": True,
+        "cutoff": {
+            "id": 1,
+            "name": "English"
+        },
+        "languages": languages
+    }]

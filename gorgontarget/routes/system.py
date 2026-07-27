@@ -11,6 +11,10 @@ import glob
 
 router = APIRouter()
 
+# Dependency helper
+async def get_medusa_client(api_key: str = Depends(get_medusa_key)):
+    return MedusaClient(api_key)
+
 @router.get("/api/v3/language")
 async def get_languages():
     return [
@@ -61,36 +65,36 @@ async def get_wanted_cutoff(page: int = Query(1), pageSize: int = Query(50)):
                     "customFormats": [
                         {
                             "id": 1,
-                            "name": None,
-                            "includeCustomFormatWhenRenaming": None,
+                            "name": "Custom Format",
+                            "includeCustomFormatWhenRenaming": True,
                             "specifications": [
                                 {
                                     "id": 1,
-                                    "name": None,
-                                    "implementation": None,
-                                    "implementationName": None,
+                                    "name": "Custom Spec",
+                                    "implementation": "CustomSpec",
+                                    "implementationName": "CustomSpec",
                                     "infoLink": None,
                                     "negate": True,
                                     "required": True,
                                     "fields": [
                                         {
                                             "order": 1,
-                                            "name": None,
-                                            "label": None,
+                                            "name": "field1",
+                                            "label": "Field 1",
                                             "unit": None,
                                             "helpText": None,
                                             "helpTextWarning": None,
                                             "helpLink": None,
-                                            "value": None,
-                                            "type": None,
+                                            "value": "val",
+                                            "type": "string",
                                             "advanced": True,
-                                            "selectOptions": ["[Max Depth Exceeded]"],
+                                            "selectOptions": [],
                                             "selectOptionsProviderAction": None,
                                             "section": None,
                                             "hidden": None,
                                             "privacy": "normal",
                                             "placeholder": None,
-                                            "isFloat": True
+                                            "isFloat": False
                                         }
                                     ],
                                     "presets": []
@@ -280,41 +284,44 @@ async def trigger_task(task_name: str, api_key: str = Depends(get_medusa_key)):
 
 @router.get("/api/system/status")
 @router.get("/api/v3/system/status")
-async def get_system_status(api_key: str = Depends(get_medusa_key)):
-    # Medusa doesn't expose all these fields, mapping best effort
-    now = "2026-07-23T20:22:08.218Z"
+async def get_system_status(client: MedusaClient = Depends(get_medusa_client)):
+    # Retrieve system configuration from Medusa
+    config = await client.get_system_config()
+    system_data = config.get("system", {})
+    
+    # Map Medusa status to Sonarr v3 schema
     return {
         "appName": "Sonarr",
         "instanceName": "GorgonTarget",
-        "version": "4.0.0",
-        "buildTime": now,
-        "isDebug": True,
+        "version": system_data.get("release", "4.0.0"),
+        "buildTime": system_data.get("lastUpdate", "2026-07-27T00:00:00Z"),
+        "isDebug": False,
         "isProduction": True,
         "isAdmin": True,
-        "isUserInteractive": True,
-        "startupPath": "/app",
-        "appData": "/config",
-        "osName": "linux",
-        "osVersion": "alpine",
-        "isNetCore": True,
+        "isUserInteractive": False,
+        "startupPath": system_data.get("programDir", "/opt/medusa"),
+        "appData": system_data.get("dataDir", "/opt/medusa"),
+        "osName": system_data.get("os", "Linux"),
+        "osVersion": "6.1.0",
+        "isNetCore": False,
         "isLinux": True,
         "isOsx": False,
         "isWindows": False,
-        "isDocker": True,
+        "isDocker": system_data.get("runsInDocker", False),
         "mode": "console",
-        "branch": "master",
+        "branch": system_data.get("branch", "develop"),
         "authentication": "none",
         "sqliteVersion": "3.37.0",
-        "migrationVersion": 1,
-        "urlBase": "",
-        "runtimeVersion": "3.11",
+        "migrationVersion": system_data.get("databaseVersion", {}).get("major", 1),
+        "urlBase": system_data.get("webRoot", ""),
+        "runtimeVersion": system_data.get("pythonVersion", "3.11"),
         "runtimeName": "python",
-        "startTime": now,
-        "packageVersion": "4.0.0",
+        "startTime": "2026-07-27T00:00:00Z",
+        "packageVersion": system_data.get("release", "4.0.0"),
         "packageAuthor": "GorgonTarget",
         "packageUpdateMechanism": "builtIn",
         "packageUpdateMechanismMessage": None,
-        "databaseVersion": "1",
+        "databaseVersion": str(system_data.get("databaseVersion", {}).get("major", 1)),
         "databaseType": "sqLite"
     }
 
@@ -560,66 +567,6 @@ async def download_logs(api_key: str = Depends(get_medusa_key)):
         media_type="text/plain",
         headers={"Content-Disposition": "attachment; filename=gorgontarget_full.log"}
     )
-
-@router.get("/api/v3/qualityprofile")
-async def get_quality_profiles(api_key: str = Depends(get_medusa_key)):
-    # Fetch search configuration to populate profiles
-    client = MedusaClient(api_key)
-    config = await client.get_system_config()
-    search = config.get("search", {})
-    
-    # Map Medusa's search ignored/preferred words to a default quality profile
-    return [
-        {
-            "id": 1,
-            "name": "Medusa-Mapped Profile",
-            "upgradeAllowed": False,
-            "cutoff": 1,
-            "items": [
-                {"quality": {"id": 1, "name": "HDTV-720p", "source": "hdtv", "resolution": 720}, "allowed": True},
-                {"quality": {"id": 2, "name": "HDTV-1080p", "source": "hdtv", "resolution": 1080}, "allowed": True}
-            ]
-        }
-    ]
-
-@router.get("/api/v3/tag")
-async def get_tags(api_key: str = Depends(get_medusa_key)):
-    # Medusa doesn't have native tags. 
-    # Return a set of default tags that Sonarr-compatible apps expect.
-    return [
-        {"id": 1, "label": "medusa-managed"},
-        {"id": 2, "label": "auto-imported"}
-    ]
-
-@router.get("/api/v3/languageprofile")
-async def get_language_profiles(api_key: str = Depends(get_medusa_key)):
-    client = MedusaClient(api_key)
-    config = await client.get_system_config()
-    subtitles = config.get("subtitles", {})
-    wanted_langs = subtitles.get("wantedLanguages", [])
-    
-    # Map Medusa's wantedLanguages to the requested schema
-    languages = []
-    for i, lang in enumerate(wanted_langs):
-        languages.append({
-            "id": i + 1,
-            "language": {
-                "id": i + 1,
-                "name": lang.get("name")
-            },
-            "allowed": True
-        })
-        
-    return [{
-        "id": 1,
-        "name": "Default Language Profile",
-        "upgradeAllowed": True,
-        "cutoff": {
-            "id": 1,
-            "name": "English"
-        },
-        "languages": languages
-    }]
 
 @router.get("/api/v3/system/backup")
 async def get_backups(api_key: str = Depends(get_medusa_key)):

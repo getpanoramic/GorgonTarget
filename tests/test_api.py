@@ -54,8 +54,9 @@ async def test_system_status(async_app_client):
     data = response.json()
     assert data["appName"] == "Sonarr"
     assert data["version"] == "4.0.0"
-    assert data["startupPath"] == "/app"
-    assert data["osName"] == "linux"
+    assert data["startupPath"] == "/opt/medusa"
+
+    assert data["osName"] == "Linux"
 
 @pytest.mark.asyncio
 @patch("gorgontarget.routes.series.core_all_series")
