@@ -78,38 +78,39 @@ async def get_calendar(
                 
             series_id = int(item.get("tvdbid") or extract_id_from_str(item.get("showSlug", "0")) or 0)
             episode_id = int(extract_id_from_str(f"{series_id}{item.get('season', 0)}{item.get('episode', 0)}") or 0)
-            
-        # Construct comprehensive CalendarResource (mirrors EpisodeResource)
-        record = {
-            "id": episode_id,
-            "seriesId": series_id,
-            "tvdbId": series_id,
-            "episodeFileId": 0,
-            "seasonNumber": item.get("season", 0),
-            "episodeNumber": item.get("episode", 0),
-            "title": item.get("epName", "Unknown Episode"),
-            "airDate": airdate_str.split('T')[0] if airdate_str else None,
-            "airDateUtc": airdate_str,
-            "runtime": 30,
-            "hasFile": False,
-            "monitored": True,
-            "series": {
-                "id": series_id,
-                "title": item.get("showName", "Unknown"),
-                "status": item.get("showStatus", "continuing").lower() if item.get("showStatus") else "continuing",
-                "year": 2026,
-                "qualityProfileId": 1,
-                "monitored": True,
-                "runtime": 30,
+
+            # Construct comprehensive CalendarResource (mirrors EpisodeResource)
+            record = {
+                "id": episode_id,
+                "seriesId": series_id,
                 "tvdbId": series_id,
-                "seriesType": "standard",
-                "added": "2026-01-01T00:00:00Z"
-            } if includeSeries else None,
-            "episodeFile": None, 
-            "images": build_sonarr_images(series_id, api_key) if includeEpisodeImages else []
-        }
-        records.append(record)
-        logger.debug(f"DEBUG: Calendar records: {records}")
+                "episodeFileId": 0,
+                "seasonNumber": item.get("season", 0),
+                "episodeNumber": item.get("episode", 0),
+                "title": item.get("epName", "Unknown Episode"),
+                "airDate": airdate_str.split('T')[0] if airdate_str else None,
+                "airDateUtc": airdate_str,
+                "runtime": 30,
+                "hasFile": False,
+                "monitored": True,
+                "series": {
+                    "id": series_id,
+                    "title": item.get("showName", "Unknown"),
+                    "status": item.get("showStatus", "continuing").lower() if item.get("showStatus") else "continuing",
+                    "year": 2026,
+                    "qualityProfileId": 1,
+                    "monitored": True,
+                    "runtime": 30,
+                    "tvdbId": series_id,
+                    "seriesType": "standard",
+                    "added": "2026-01-01T00:00:00Z"
+                } if includeSeries else None,
+                "episodeFile": None, 
+                "images": build_sonarr_images(series_id, api_key) if includeEpisodeImages else []
+            }
+            records.append(record)
+            
+        logger.debug(f"DEBUG: Returning {len(records)} calendar records.")
         return records
     except Exception as e:
         logger.error(f"Calendar exception: {str(e)}")

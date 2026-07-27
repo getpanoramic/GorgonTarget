@@ -32,7 +32,6 @@ async def get_history(
             return {"page": 1, "pageSize": pageSize, "totalRecords": 0, "records": []}
             
         data = res.json()
-        logger.debug(f"History raw data received (count: {len(data)}): {data}")
         
         # Filter and transform
         filtered_records = []
