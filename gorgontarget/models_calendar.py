@@ -27,10 +27,10 @@ class CalendarSeries(BaseModel):
     images: Optional[List[Dict[str, Any]]] = None
     year: int
     path: Optional[str] = None
-    qualityProfileId: int
+    qualityProfileId: Optional[int] = None
     monitored: bool
     runtime: int
-    tvdbId: int
+    tvdbId: Optional[int] = None
     firstAired: Optional[str] = None
     seriesType: str
     genres: Optional[List[str]] = None
@@ -40,7 +40,7 @@ class CalendarSeries(BaseModel):
 class CalendarEpisode(BaseModel):
     id: int
     seriesId: int
-    tvdbId: int
+    tvdbId: Optional[int] = None
     episodeFileId: int
     seasonNumber: int
     episodeNumber: int

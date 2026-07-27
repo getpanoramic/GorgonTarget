@@ -89,7 +89,6 @@ async def get_calendar(
             record = {
                 "id": episode_id,
                 "seriesId": series_id,
-                "tvdbId": series_id,
                 "episodeFileId": 0,
                 "seasonNumber": item.get("season", 0),
                 "episodeNumber": item.get("episode", 0),
@@ -108,7 +107,6 @@ async def get_calendar(
                     "status": "continuing",
                     "ended": False,
                     "profileId": 1,
-                    "qualityProfileId": 1,
                     "nextAiring": airdate_str,
                     "images": build_sonarr_images(series_id, api_key),
                     "year": 2026,
