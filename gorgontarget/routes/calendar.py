@@ -60,8 +60,10 @@ async def get_calendar(
         
         records = []
         for item in combined:
+            logger.debug(f"DEBUG: Processing calendar item: {item.get('showName', 'Unknown')} - {item.get('season', '0')}x{item.get('episode', '0')}")
             airdate_str = item.get("localAirTime") or item.get("airdate")
             if not airdate_str:
+                logger.debug(f"DEBUG: Skipping item due to missing airdate: {item.get('epName', 'Unknown')}")
                 continue
                 
             # Filter by start/end dates
