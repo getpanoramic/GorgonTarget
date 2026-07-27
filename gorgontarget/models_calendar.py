@@ -29,26 +29,26 @@ class CalendarSeries(BaseModel):
     path: Optional[str] = None
     qualityProfileId: Optional[int] = None
     monitored: bool
-    runtime: int
+    runtime: Optional[int] = None
     tvdbId: Optional[int] = None
     firstAired: Optional[str] = None
-    seriesType: str
+    seriesType: Optional[str] = None
     genres: Optional[List[str]] = None
     tags: Optional[List[int]] = None
-    added: str
+    added: Optional[str] = None
 
 class CalendarEpisode(BaseModel):
     id: int
     seriesId: int
     tvdbId: Optional[int] = None
-    episodeFileId: int
+    episodeFileId: Optional[int] = None
     seasonNumber: int
     episodeNumber: int
     title: Optional[str] = None
     airDate: Optional[str] = None
     airDateUtc: Optional[str] = None
     lastSearchTime: Optional[str] = None
-    runtime: int
+    runtime: Optional[int] = None
     overview: Optional[str] = None
     episodeFile: Optional[CalendarEpisodeFile] = None
     hasFile: bool
