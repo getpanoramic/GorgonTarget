@@ -18,7 +18,6 @@ async def get_calendar(
     api_key: str = Depends(get_medusa_key)
 ):
     try:
-        # Request all relevant categories from Medusa's schedule
         params = [
             ("category[]", "today"),
             ("category[]", "soon"),
