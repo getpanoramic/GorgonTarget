@@ -85,49 +85,25 @@ async def get_calendar(
             # Use deterministic hash based on unique components to avoid collisions
             episode_id = generate_deterministic_id(f"{series_id}_{item.get('season', 0)}_{item.get('episode', 0)}")
 
-            # Construct compatible CalendarResource
+            # Construct minimal compatible CalendarResource
             record = {
                 "id": episode_id,
                 "seriesId": series_id,
-                "episodeFileId": 0,
                 "seasonNumber": item.get("season", 0),
                 "episodeNumber": item.get("episode", 0),
                 "title": item.get("epName", "Unknown Episode"),
                 "airDate": airdate_str.split('T')[0] if airdate_str else None,
                 "airDateUtc": airdate_str,
-                "runtime": 30,
-                "overview": item.get("description", ""),
                 "hasFile": False,
                 "monitored": True,
-                "unverifiedSceneNumbering": False,
                 "series": {
                     "id": series_id,
                     "title": item.get("showName", "Unknown"),
-                    "sortTitle": item.get("showName", "Unknown").lower(),
                     "status": "continuing",
-                    "ended": False,
-                    "profileId": 1,
-                    "nextAiring": airdate_str,
-                    "images": build_sonarr_images(series_id, api_key),
                     "year": 2026,
-                    "path": "/data/media/TV/Unknown",
-                    "monitored": True,
-                    "useSceneNumbering": False,
-                    "runtime": 30,
-                    "tvdbId": series_id,
-                    "tvRageId": 0,
-                    "tvMazeId": 0,
-                    "firstAired": "2026-01-01T00:00:00Z",
-                    "seriesType": "standard",
-                    "cleanTitle": item.get("showSlug", "unknown"),
-                    "imdbId": "",
-                    "titleSlug": item.get("showSlug", "unknown"),
-                    "certification": "",
-                    "genres": [],
-                    "tags": [],
-                    "added": "2026-01-01T00:00:00Z",
-                    "ratings": {"votes": 0, "value": 0.0}
-                } if includeSeries else None
+                    "monitored": True
+                } if includeSeries else None,
+                "images": build_sonarr_images(series_id, api_key) if includeEpisodeImages else []
             }
             records.append(record)
             
