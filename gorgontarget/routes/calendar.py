@@ -4,9 +4,14 @@ from ..utils import get_medusa_key, logger, get_async_client, medusa_headers, bu
 from ..models_calendar import CalendarEpisode
 import httpx
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 router = APIRouter()
+
+def ensure_aware(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 @router.get("/api/v3/calendar", response_model=List[CalendarEpisode])
 async def get_calendar(
@@ -29,8 +34,8 @@ async def get_calendar(
         
         # Robust date parsing for filtering
         try:
-            start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
-            end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+            start_dt = ensure_aware(datetime.fromisoformat(start.replace("Z", "+00:00")))
+            end_dt = ensure_aware(datetime.fromisoformat(end.replace("Z", "+00:00")))
         except ValueError:
             start_dt, end_dt = None, None
 
@@ -59,7 +64,7 @@ async def get_calendar(
             # Filter by start/end dates
             if start_dt and end_dt:
                 try:
-                    airdate_dt = datetime.fromisoformat(airdate_str.replace("Z", "+00:00"))
+                    airdate_dt = ensure_aware(datetime.fromisoformat(airdate_str.replace("Z", "+00:00")))
                     if airdate_dt < start_dt or airdate_dt > end_dt:
                         continue
                 except ValueError:
