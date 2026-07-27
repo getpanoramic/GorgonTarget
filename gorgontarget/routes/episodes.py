@@ -1,7 +1,7 @@
 import asyncio
 from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from typing import List, Optional
-from ..utils import get_medusa_key, logger, extract_clean_integer_id, parse_medusa_size, async_client, medusa_headers, build_sonarr_images, extract_id_from_str
+from ..utils import get_medusa_key, logger, extract_clean_integer_id, parse_medusa_size, async_client, medusa_headers, build_sonarr_images, extract_id_from_str, format_date_to_iso
 from ..client import MedusaClient
 from ..translator import MedusaTranslator
 from ..cache import episode_series_map

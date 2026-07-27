@@ -78,6 +78,17 @@ def medusa_headers(api_key: str) -> dict:
     return {"x-api-key": api_key, "Content-Type": "application/json"}
 
 # Helpers
+def format_date_to_iso(date_str: Optional[str]) -> Optional[str]:
+    if not date_str: return None
+    try:
+        # Check if it has time component
+        if 'T' in date_str:
+            return date_str.replace("+00:00", "Z")
+        # If just date
+        return f"{date_str}T00:00:00Z"
+    except:
+        return date_str
+
 def build_sonarr_images(series_id: int, api_key: str = "") -> List[Dict[str, str]]:
     key_param = f"?api_key={api_key}" if api_key else ""
     return [

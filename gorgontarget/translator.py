@@ -2,7 +2,7 @@ from typing import Dict, Any
 import sys
 from .models import SonarrSeries, SonarrEpisode, SonarrSystemStatus
 from .settings import settings
-from .utils import logger
+from .utils import logger, format_date_to_iso
 
 class MedusaTranslator:
     @staticmethod
@@ -64,21 +64,27 @@ class MedusaTranslator:
 
     @classmethod
     def to_sonarr_series(cls, medusa_show: Dict[str, Any], api_key: str = "") -> Dict[str, Any]:
-        ids = medusa_show.get("ids", {})
         medusa_id = cls.extract_clean_integer_id(medusa_show)
-        title = medusa_show.get("title", f"Series {medusa_id}")
-
-        # Aggregate statistics
-        seasons_data = medusa_show.get("seasons", [])
-        total_episodes = sum(int(s.get("episodes", 0)) for s in seasons_data)
-        downloaded_episodes = sum(int(s.get("episodes", 0)) for s in seasons_data)
-        percent_downloaded = (downloaded_episodes / total_episodes * 100) if total_episodes > 0 else 100
-
+        
+        # Handle both the new structure (id dictionary) and the legacy structure (ids dictionary)
+        ids_data = medusa_show.get("id", {})
+        if not isinstance(ids_data, dict):
+             # Try legacy or raw ID
+             ids_data = medusa_show.get("ids", {"tvdb": medusa_id})
+        
+        tvdb_id = ids_data.get("tvdb", medusa_id) if isinstance(ids_data, dict) else medusa_id
+        
+        imdb_info = medusa_show.get("imdbInfo", {})
+        config = medusa_show.get("config", {})
+        rating_data = medusa_show.get("rating", {}).get("imdb", {})
+        
+        # Aggregate statistics from Medusa's seasonCount array
+        seasons_data = medusa_show.get("seasonCount", [])
+        total_episodes = sum(int(s.get("episodeCount", 0)) for s in seasons_data)
+        
         seasons = []
         for s in seasons_data:
-            ep_count = int(s.get("episodes", 0))
-            season_size = cls.parse_size_to_bytes(s.get("size", "0 B"))
-            
+            ep_count = int(s.get("episodeCount", 0))
             seasons.append({
                 "seasonNumber": int(s.get("season", 0)),
                 "monitored": True,
@@ -88,33 +94,28 @@ class MedusaTranslator:
                     "episodeFileCount": ep_count,
                     "episodeCount": ep_count,
                     "totalEpisodeCount": ep_count,
-                    "sizeOnDisk": season_size,
+                    "sizeOnDisk": 0,
                     "percentOfEpisodes": 100.0,
                     "releaseGroups": []
                 },
                 "images": []
             })
 
-        total_size_on_disk = sum(cls.parse_size_to_bytes(s.get("size", "0 B")) for s in seasons_data)
         key_param = f"?api_key={api_key}" if api_key else ""
-
-        # Robust imdbId extraction
-        imdb_val = ids.get("imdb") or medusa_show.get("externals", {}).get("imdb") or medusa_show.get("imdbInfo", {}).get("imdbId") or ""
-        if isinstance(imdb_val, int):
-            imdb_val = f"tt{imdb_val:07d}"
         
+        # Construct the series dictionary dynamically
         return {
             "id": medusa_id,
-            "title": title,
-            "tvdbId": int(ids.get("tvdb") or medusa_show.get("externals", {}).get("tvdb") or 0),
-            "tmdbId": int(ids.get("tmdb") or medusa_show.get("externals", {}).get("tmdb") or 0),
-            "imdbId": str(imdb_val),
-            "sortTitle": title.lower(),
-            "status": "continuing" if medusa_show.get("status", "").lower() == "continuing" else "ended",
-            "overview": medusa_show.get("plot", medusa_show.get("overview", "")),
-            "year": cls.extract_clean_year(medusa_show),
-            "path": medusa_show.get("config", {}).get("location", f"/tv/{title}"),
-            "monitored": not medusa_show.get("paused", False),
+            "title": medusa_show.get("title"),
+            "tvdbId": tvdb_id,
+            "tmdbId": medusa_show.get("externals", {}).get("tmdb", 0),
+            "imdbId": str(medusa_show.get("externals", {}).get("imdb", "")),
+            "sortTitle": medusa_show.get("title", "").lower(),
+            "status": medusa_show.get("status", "Continuing").lower(),
+            "overview": medusa_show.get("plot", ""),
+            "year": medusa_show.get("year", {}).get("start", 0) if isinstance(medusa_show.get("year"), dict) else medusa_show.get("year", 0),
+            "path": config.get("location", ""),
+            "monitored": not config.get("paused", False),
             "images": [
                 {"coverType": "poster", "url": f"/api/v3/mediacover/{medusa_id}/poster-500.jpg{key_param}", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/poster-500.jpg{key_param}"},
                 {"coverType": "banner", "url": f"/api/v3/mediacover/{medusa_id}/banner-500.jpg{key_param}", "remoteUrl": f"/api/v3/mediacover/{medusa_id}/banner-500.jpg{key_param}"},
@@ -127,13 +128,16 @@ class MedusaTranslator:
                 "episodeFileCount": total_episodes,
                 "episodeCount": total_episodes,
                 "totalEpisodeCount": total_episodes,
-                "sizeOnDisk": total_size_on_disk,
-                "percentOfEpisodes": percent_downloaded
+                "sizeOnDisk": medusa_show.get("size", 0),
+                "percentOfEpisodes": 100.0
             },
             "network": medusa_show.get("network", "Unknown"),
             "genres": medusa_show.get("genres", []),
-            "ratings": {"votes": 0, "value": float(medusa_show.get("rating") if isinstance(medusa_show.get("rating"), (int, float, str)) else 0.0)},
-            "certification": medusa_show.get("certification", None),
+            "ratings": {
+                "votes": int(rating_data.get("votes", 0)),
+                "value": float(rating_data.get("rating", 0.0))
+            },
+            "certification": "",
             "tags": [],
             "added": "2026-01-01T00:00:00Z"
         }
@@ -163,8 +167,8 @@ class MedusaTranslator:
             "seasonNumber": int(medusa_ep.get("season", 0)),
             "episodeNumber": int(medusa_ep.get("episode", medusa_ep.get("number", 0))),
             "title": medusa_ep.get("title"),
-            "airDate": medusa_ep.get("airDate"), # Might need format adjustment
-            "airDateUtc": medusa_ep.get("airDate"), # Assuming already ISO
+            "airDate": format_date_to_iso(medusa_ep.get("airDate")),
+            "airDateUtc": format_date_to_iso(medusa_ep.get("airDate")),
             "lastSearchTime": None,
             "runtime": 30, # Default
             "finaleType": None,
